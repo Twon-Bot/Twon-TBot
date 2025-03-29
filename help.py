@@ -18,7 +18,7 @@ class HelpCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.command(name='help')
+    @commands.command(name='help', aliases=["h"])
     @commands.has_any_role('Moderator', 'Manager', 'Server Owner', 'Police')
     async def help(self, ctx, category: str = None):
         # Use a warm yellow color for the embed
@@ -40,9 +40,9 @@ class HelpCog(commands.Cog):
             await ctx.send(embed=embed)
             return
 
-        if category.lower() == "announce":
+        if category.lower() in ["announce", "ann"]:
             await self.send_announce_help(ctx, color)
-        elif category.lower() == "schedule":
+        elif category.lower() in ["schedule", "sch"]:
             embed = discord.Embed(
                 title="**Schedule Commands:**",
                 description=(
@@ -53,7 +53,7 @@ class HelpCog(commands.Cog):
                 color=color
             )
             await ctx.send(embed=embed)
-        elif category.lower() == "timezone":
+        elif category.lower() in ["timezone", "time", "tz"]:
             embed = discord.Embed(
                 title="**Time Zone Commands:**",
                 description=(
@@ -64,7 +64,7 @@ class HelpCog(commands.Cog):
                 color=color
             )
             await ctx.send(embed=embed)
-        elif category.lower() == "delay":
+        elif category.lower() in ["delay", "del"]:
             embed = discord.Embed(
                 title="**Delay Commands:**",
                 description=(
@@ -78,7 +78,7 @@ class HelpCog(commands.Cog):
                 color=color
             )
             await ctx.send(embed=embed)
-        elif category.lower() == "commands":
+        elif category.lower() in ["commands", "com", "comm"]:
             embed = discord.Embed(
                 title="**All Commands:**",
                 description=(
@@ -104,7 +104,7 @@ class HelpCog(commands.Cog):
                 color=color
             )
             await ctx.send(embed=embed)
-        elif category.lower() == "timestamp":
+        elif category.lower() in ["timestamp", "ts"]:
             embed = discord.Embed(
                 title="**Timestamp Formats:**",
                 description=(
