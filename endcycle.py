@@ -20,7 +20,7 @@ class EndCycleCog(commands.Cog):
         if message is None:
             await ctx.send(
                 'Error: Please input the ending cycle number with the command.\n'
-                '*(e.g. **!!endcycle 4** to start the 4th cycle).*'
+                '*(e.g. **!!endcycle 4** to start the 5th cycle).*'
             )
             return
 
@@ -30,7 +30,7 @@ class EndCycleCog(commands.Cog):
         except ValueError:
             await ctx.send(
                 'Error: The cycle number must be an integer.\n'
-                '*(e.g. **!!endcycle 4** to start the 4th cycle).*'
+                '*(e.g. **!!endcycle 4** to start the 5th cycle).*'
             )
             return
 
