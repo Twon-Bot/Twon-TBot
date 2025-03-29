@@ -61,7 +61,8 @@ class TimestampCog(commands.Cog):
         # First message: full Discord timestamp code.
         await ctx.send(f"Here is your Discord timestamp display:\n**{full_timestamp}**")
         # Second message: just the 10-digit code.
-        await ctx.send(f"Copy this code for your usage:\n```{timestamp_int}```")
+        await ctx.send(f"Copy this code for your usage:\n")
+        await ctx.send(f"{timestamp_int}")
         await ctx.send(f"For formatting options, please see: **!!help timestamp**")
 
     @timestamp.error
