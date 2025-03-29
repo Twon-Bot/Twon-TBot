@@ -36,9 +36,20 @@ A Discord bot designed for managing announcements, polls, schedules, and trackin
    git clone https://github.com/Twon-Bot/Twon-TBot.git
    cd Twon-TBot
 2. **Install Dependencies**
-   ```pip install -r requirements.txt
+   ```sh
+   pip install -r requirements.txt
 3. **Setup Environment Variables**
-   ```Create a **.env** file and add your bot token and other necessary credentials.
+   Create a **.env** file and add your bot token and other necessary credentials.
 4. **Run the Bot**
-   ```python bot.py
+   ```sh
+   python bot.py
    
+## Usage
+- Use `!!help` for an overall outline of the bot's functions.
+- ^^ If I missed any details that you're confused about, please reach out `@#01 Blimo` and I'll help asap!
+
+## Contributing
+If you'd like to contribute, please fork the repository and submit a pull request.
+
+## License
+This project is private and intended for use in the **2 Star Wonderpick Hunting** Server.
