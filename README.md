@@ -39,7 +39,7 @@ A Discord bot designed for managing announcements, polls, schedules, and trackin
    ```sh
    pip install -r requirements.txt
 3. **Setup Environment Variables**
-   Create a **.env** file and add your bot token and other necessary credentials.
+- Create a **.env** file and add your bot token and other necessary credentials.
 4. **Run the Bot**
    ```sh
    python bot.py
