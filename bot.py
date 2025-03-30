@@ -104,6 +104,7 @@ async def on_command_error(ctx, error):
 
 @bot.event
 async def on_ready():
+    await bot.tree.sync()  # Sync slash commands
     print("Bot is now ready!")
 
 # Show who uses which command in powershells
