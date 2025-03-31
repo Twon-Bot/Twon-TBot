@@ -270,7 +270,7 @@ Activity Check
 We are conducting an **Activity Check** to ensure everyone is active.  
 ✅ **Please answer the poll below immediately.**  
 
-⏳ **Deadline:** 12 hours from now {CHECKTIME}
+⏳ **Deadline:** 18 hours from now {CHECKTIME}
 
 ---
 ## ⚠️ **WHAT HAPPENS IF YOU DON’T RESPOND?**  
