@@ -1,3 +1,5 @@
+## Note: **PLEASE** fork the repository and submit a request if testing any changes - **do not** push to main please. *Thanks!*
+
 # Twon-TBot  
 
 A Discord bot designed for managing announcements, polls, schedules, and tracking in the PTCGP Server.  
