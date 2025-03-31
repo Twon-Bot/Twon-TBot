@@ -89,6 +89,7 @@ async def load_extensions():
         await bot.load_extension('addingschedule')
         await bot.load_extension('timestamp')
         await bot.load_extension('tony')
+        await bot.load_extension('happytree')
         print("Extensions loaded successfully.")
         print("Registered commands:", [cmd.name for cmd in bot.commands])
     except Exception as e:
