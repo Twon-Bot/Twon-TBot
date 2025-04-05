@@ -3,11 +3,16 @@ from discord.ext import commands
 from datetime import datetime
 import asyncio
 import pytz
+from dotenv import load_dotenv
+import os
 
-ANNOUNCEMENT_CHANNEL_ID = 1334901972448448652
-TEST_ANNOUNCEMENT_CHANNEL_ID = 1353821007932166154
-ACTIVITY_CHECK_CHANNEL_ID = 1349881473087438858
-SCHEDULE_CHANNEL_ID = 1349879809445990560
+# Get channel ID's from .env
+load_dotenv()
+
+ANNOUNCEMENT_CHANNEL_ID = int(os.getenv("ANNOUNCEMENT_CHANNEL_ID"))
+TEST_ANNOUNCEMENT_CHANNEL_ID = int(os.getenv("TEST_ANNOUNCEMENT_CHANNEL_ID"))
+SCHEDULE_CHANNEL_ID = int(os.getenv("SCHEDULE_CHANNEL_ID"))
+ACTIVITY_CHECK_CHANNEL_ID = int(os.getenv("ACTIVITY_CHECK_CHANNEL_ID"))
 
 class AnnouncementCog(commands.Cog):
     def __init__(self, bot):

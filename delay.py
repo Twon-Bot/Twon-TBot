@@ -5,16 +5,19 @@ import os  # For safe file replacement
 from datetime import datetime
 import pytz
 import asyncio
+from dotenv import load_dotenv
 
 # File to store scheduled announcements
 DELAY_FILE = "delayed_announcements.json"
 ANNOUNCEMENTS_FILE = "announcements.txt"  # Ensure this file exists
 
-# Announcement channel IDs from announce.py
-ANNOUNCEMENT_CHANNEL_ID = 1334901972448448652
-TEST_ANNOUNCEMENT_CHANNEL_ID = 1353821007932166154
-ACTIVITY_CHECK_CHANNEL_ID = 1349881473087438858
-SCHEDULE_CHANNEL_ID = 1349879809445990560
+# Get channel ID's from .env
+load_dotenv()
+
+ANNOUNCEMENT_CHANNEL_ID = int(os.getenv("ANNOUNCEMENT_CHANNEL_ID"))
+TEST_ANNOUNCEMENT_CHANNEL_ID = int(os.getenv("TEST_ANNOUNCEMENT_CHANNEL_ID"))
+SCHEDULE_CHANNEL_ID = int(os.getenv("SCHEDULE_CHANNEL_ID"))
+ACTIVITY_CHECK_CHANNEL_ID = int(os.getenv("ACTIVITY_CHECK_CHANNEL_ID"))
 
 class DelayedAnnouncements(commands.Cog):
     def __init__(self, bot):
