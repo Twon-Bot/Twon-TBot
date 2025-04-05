@@ -36,3 +36,5 @@ verify_data.py
 verify_database.py
 write_savefile.py
 your_database.db
+*.docx
+~$*
