@@ -1,6 +1,3 @@
-### Note: **PLEASE** fork the repository and submit a request if testing any changes - **do not** push to main please. *Thanks!*
-
-
 # Twon-TBot  
 
 A Discord bot designed for managing announcements, polls, schedules, and tracking in the PTCGP Server.  
@@ -42,7 +39,13 @@ A Discord bot designed for managing announcements, polls, schedules, and trackin
    ```sh
    pip install -r requirements.txt
 3. **Setup Environment Variables**
-- Create a **.env** file and add your bot token and other necessary credentials.
+- Create a **.env** file with your bot token:
+     - DISCORD_BOT_TOKEN2
+- And 4 channel ID's:
+     - ANNOUNCEMENT_CHANNEL_ID
+     - TEST_ANNOUNCEMENT_CHANNEL_ID
+     - ACTIVITY_CHECK_CHANNEL_ID
+     - SCHEDULE_CHANNEL_ID
 4. **Run the Bot**
    ```sh
    python bot.py
