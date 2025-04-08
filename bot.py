@@ -1,3 +1,8 @@
+# CONSIDER
+# Using RAILWAY as the cloud platform
+# -- It didn't load the bot properly, BUT
+
+
 import discord
 import sqlite3
 import os
