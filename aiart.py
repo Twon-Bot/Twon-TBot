@@ -1,6 +1,6 @@
 import os
-import openai
 import discord
+import openai
 from discord.ext import commands
 from dotenv import load_dotenv
 
@@ -17,6 +17,7 @@ class AIArtCog(commands.Cog):
         openai.api_key = self.api_key
 
     @commands.command(aliases=["ai"])
+    @commands.has_role('The BotFather')
     async def aiart(self, ctx, *, prompt: str = "a happy tree in a fantasy forest"):
         """
         Generates an AI image based on a text prompt and sends the image URL.
