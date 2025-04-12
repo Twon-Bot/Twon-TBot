@@ -55,10 +55,19 @@ class TrackingCog(commands.Cog):
             # Convert expiry date to Discord timestamp
             try:
                 expiry_dt = datetime.strptime(expire_time, "%m/%d %H:%M")
-                now = datetime.now()
-                expiry_dt = expiry_dt.replace(year=now.year)
-                # Optionally, adjust for timezone if needed. Here, we assume local time.
-                timestamp = int(expiry_dt.timestamp())
+                current_year = datetime.utcnow().year
+                expiry_dt = expiry_dt.replace(year=current_year)
+                
+                # Explicitly define your intended timezone (change "US/Eastern" to your desired zone)
+                tz = pytz.timezone("US/Eastern")
+                
+                # Localize the parsed expiry_dt to your timezone
+                expiry_dt = tz.localize(expiry_dt)
+                
+                # Convert the localized time to UTC
+                utc_time = expiry_dt.astimezone(pytz.utc)
+                
+                timestamp = int(utc_time.timestamp())
                 expire_time = f"<t:{timestamp}:F>"
             except Exception:
                 # If conversion fails, use the raw input
