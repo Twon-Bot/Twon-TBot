@@ -52,8 +52,11 @@ class AnnouncementCog(commands.Cog):
     async def handle_wonder_pick_or_voting_end(self, ctx, lower_message, message, num_winners=None, test_mode=False):
         if lower_message.startswith("wonder pick"):
             await ctx.send(f"**Please input the {num_winners} winners and their pack contents**, in the following format:\n"
-                           f"***User 1, User 1's Pack, \nUser 2, User 2's Pack{', \nUser 3, User 3\'s Pack' if num_winners > 2 else ''}{', \nUser 4, User 4\'s Pack' if num_winners > 3 else ''}***\n"
-                           "*Note: Commas **must** separate each input!*")
+                        f"***User 1, User 1's Pack, \nUser 2, User 2's Pack"
+                        f"{', \nUser 3, User 3\'s Pack' if num_winners > 2 else ''}"
+                        f"{', \nUser 4, User 4\'s Pack' if num_winners > 3 else ''}"
+                        f"{', \nUser 5, User 5\'s Pack' if num_winners > 4 else ''}***\n"
+                        "*Note: Commas **must** separate each input!*")
             expected_inputs = num_winners * 2
 
         elif lower_message == "voting end":
