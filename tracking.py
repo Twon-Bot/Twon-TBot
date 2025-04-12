@@ -3,6 +3,7 @@ from discord.ext import commands
 import asyncio
 from datetime import datetime
 import pytz
+import sqlite3  # Needed to fetch the user's timezone from the database
 
 class TrackingCog(commands.Cog):
     def __init__(self, bot):
@@ -11,19 +12,16 @@ class TrackingCog(commands.Cog):
     def get_user_timezone(self, user_id):
         """
         Fetch the user's timezone from the database.
-        If not set, it returns "UTC" as the default.
-        Replace this stub with your actual database call if needed.
+        Returns the timezone string (e.g., "America/Denver") or None if not set.
         """
         try:
-            # Example implementation:
-            # with sqlite3.connect("bot_data.db") as conn:
-            #     cursor = conn.cursor()
-            #     cursor.execute("SELECT timezone FROM user_timezones WHERE user_id = ?", (user_id,))
-            #     result = cursor.fetchone()
-            #     return result[0] if result else "UTC"
-            return "UTC"  # Default for demonstration purposes.
+            with sqlite3.connect("bot_data.db") as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT timezone FROM user_timezones WHERE user_id = ?", (user_id,))
+                result = cursor.fetchone()
+                return result[0] if result else None
         except Exception:
-            return "UTC"
+            return None
 
     def get_pack_tracking_format(self):
         """
@@ -43,7 +41,7 @@ class TrackingCog(commands.Cog):
         except FileNotFoundError:
             return None
 
-    @commands.command(name='tracking', aliases=['track'])
+    @commands.command(name="tracking")
     @commands.has_any_role('Moderator', 'Manager', 'Server Owner')
     async def tracking(self, ctx):
         prompt = (
@@ -69,39 +67,40 @@ class TrackingCog(commands.Cog):
 
             pack_number, owner, contents, expire_time, verification_link = data
 
-            # Convert expiry date to Discord timestamp using the user's specific timezone.
+            # Convert expiry date to a Discord timestamp using the user's specific timezone.
             try:
-                # Parse the provided expiry time.
+                # Parse the provided expiry time string into a naive datetime.
                 expiry_dt = datetime.strptime(expire_time, "%m/%d %H:%M")
                 
-                # Retrieve the user's timezone (default to UTC if not found).
-                user_tz_str = self.get_user_timezone(ctx.author.id)
+                # Retrieve the user's timezone from the database; default to "UTC" if not set.
+                user_tz_str = self.get_user_timezone(ctx.author.id) or "UTC"
                 tz = pytz.timezone(user_tz_str)
                 
                 # Set the year based on the current year in the user's timezone.
                 current_year = datetime.now(tz).year
                 expiry_dt = expiry_dt.replace(year=current_year)
                 
-                # Localize the naive datetime so that it's timezone-aware.
+                # Localize the naive datetime so it becomes timezone-aware.
                 expiry_dt = tz.localize(expiry_dt)
                 
-                # Convert the localized time to UTC.
+                # Convert the localized time to UTC to generate the proper Unix timestamp.
                 utc_time = expiry_dt.astimezone(pytz.utc)
                 timestamp = int(utc_time.timestamp())
                 
-                # Build the Discord timestamp format.
+                # Build the Discord timestamp format (<t:TIMESTAMP:F>).
                 expire_time = f"<t:{timestamp}:F>"
             except Exception as e:
+                # If conversion fails, log the error and use the raw input.
                 print(f"Error converting expiry time: {e}")
-                # If conversion fails, leave expire_time as the raw input.
+                pass
 
-            # Get the pack tracking format from the announcements file.
+            # Get the pack tracking format template from announcements.txt.
             format_template = self.get_pack_tracking_format()
             if not format_template:
                 await ctx.send("Error: Could not load the Pack Tracking format from announcements.txt.")
                 return
 
-            # Replace placeholders in the template with the provided values.
+            # Replace the placeholders in the template with the provided values.
             announcement_text = format_template.format(
                 PACK_NUMBER=pack_number,
                 OWNER=owner,
