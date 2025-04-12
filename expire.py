@@ -15,7 +15,7 @@ class ExpiryCog(commands.Cog):
             result = cursor.fetchone()
             return result[0] if result else None
 
-    @commands.command()
+    @commands.command(name='expire', aliases=['expiry'])
     @commands.has_any_role('Moderator', 'Manager', 'Server Owner', 'Police')
     async def expire(self, ctx, *, date_time: str = None):
         """Calculates pack expiry time based on user input."""

@@ -26,7 +26,7 @@ class TrackingCog(commands.Cog):
         except FileNotFoundError:
             return None
 
-    @commands.command(name="tracking")
+    @commands.command(name='tracking', aliases=['track'])
     @commands.has_any_role('Moderator', 'Manager', 'Server Owner')
     async def tracking(self, ctx):
         prompt = (
