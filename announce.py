@@ -55,7 +55,8 @@ class AnnouncementCog(commands.Cog):
                         f"***User 1, User 1's Pack, \nUser 2, User 2's Pack"
                         f"{', \nUser 3, User 3\'s Pack' if num_winners > 2 else ''}"
                         f"{', \nUser 4, User 4\'s Pack' if num_winners > 3 else ''}"
-                        f"{', \nUser 5, User 5\'s Pack' if num_winners > 4 else ''}***\n"
+                        f"{', \nUser 5, User 5\'s Pack' if num_winners > 4 else ''}"
+                        f"{', \nUser 6, User 6\'s Pack' if num_winners > 5 else ''}***\n"
                         "*Note: Commas **must** separate each input!*")
             expected_inputs = num_winners * 2
 
@@ -88,7 +89,7 @@ class AnnouncementCog(commands.Cog):
                 for i in range(num_winners):
                     user_pack_data[f"USER{i+1}"] = winners_info[2*i]
                     user_pack_data[f"PACK{i+1}"] = winners_info[2*i+1]
-                # Build a dynamic key such as "Wonder Pick 2", "Wonder Pick 3", or "Wonder Pick 4"
+                # Build a dynamic key such as "Wonder Pick 2", "Wonder Pick 3", or "Wonder Pick 4", etc.
                 template_key = f"Wonder Pick {num_winners}"
                 announcement_message = await self.get_announcement(template_key, test_mode=test_mode)
                 if announcement_message is None:
