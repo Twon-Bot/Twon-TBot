@@ -190,9 +190,9 @@ class Schedule(commands.Cog):
                 embed.description = schedule_info
                 await ctx.send(embed=embed)
             except Exception:
-                await ctx.send("⚠️ There was an issue reading the stored schedule. Try resetting it with `!resetschedule`.")
+                await ctx.send("⚠️ There was an issue reading the stored schedule. Try resetting it with `!!resetschedule`.")
         else:
-            await ctx.send("No schedule is set. Use `!resetschedule` to create one.")
+            await ctx.send("No schedule is set. Use `!!resetschedule` to create one.")
 
     def cog_unload(self):
         """Properly handles cog unloading. No need to close a new connection here."""        
