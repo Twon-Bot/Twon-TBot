@@ -354,10 +354,9 @@ class PollCog(commands.Cog):
         multiple="Allow multiple votes",
         end_time="End time MM/DD HH:MM (optional)"
     )
-    @app_commands.rename(mentions="mention_text")
     async def poll_slash(self, interaction: discord.Interaction,
                           question: str,
-                          mention_text: str = None,
+                          mentions: str = None,
                           multiple: bool = False,
                           end_time: str = None,
                           option1: str = None,
@@ -370,26 +369,29 @@ class PollCog(commands.Cog):
                           option8: str = None,
                           option9: str = None,
                           option10: str = None):
-        opts = [o for o in [option1,option2,option3,option4,option5,option6,option7,option8,option9,option10] if o]
-        if len(opts)<2:
+        opts = [o for o in [
+            option1, option2, option3, option4, option5,
+            option6, option7, option8, option9, option10
+        ] if o]
+        if len(opts) < 2:
             return await interaction.response.send_message("Provide at least 2 options.", ephemeral=True)
-        if len(opts)>10:
+        if len(opts) > 10:
             return await interaction.response.send_message("Max 10 options.", ephemeral=True)
 
         # Build poll_data similar to command
         poll_data = {
             'question': question,
             'options': opts.copy(),
-            'vote_count': {o:0 for o in opts},
-            'total_votes':0,
-            'user_votes':{},
-            'voting_type':'multiple' if multiple else 'single',
-            'author':interaction.user.display_name,
-            'author_id':interaction.user.id,
-            'mention':bool(mention_text),
-            'mention_text':mention_text or '',
-            'end_time':None,
-            'closed':False
+            'vote_count': {o: 0 for o in opts},
+            'total_votes': 0,
+            'user_votes': {},
+            'voting_type': 'multiple' if multiple else 'single',
+            'author': interaction.user.display_name,
+            'author_id': interaction.user.id,
+            'mention': bool(mentions),
+            'mention_text': mentions or '',
+            'end_time': None,
+            'closed': False
         }
         if end_time:
             try:
