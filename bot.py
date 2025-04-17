@@ -1,7 +1,5 @@
-# CONSIDER
-# Using RAILWAY as the cloud platform
-# -- It didn't load the bot properly, BUT
 
+# Use RAILWAY as the cloud platform
 
 import discord
 import sqlite3
@@ -11,11 +9,14 @@ from discord.ext import commands
 from dotenv import load_dotenv
 from datetime import datetime
 
+
 # Load environment variables
 load_dotenv()
 TOKEN = os.getenv("DISCORD_BOT_TOKEN2")
 if not TOKEN:
     raise ValueError("DISCORD_BOT_TOKEN2 environment variable not set.")
+# Get Guild ID's from .env to update poll.py's slash commands
+GUILD_IDS = [int(gid.strip()) for gid in os.getenv("GUILD_IDS", "").split(",") if gid.strip()]
 
 # Set up the bot
 intents = discord.Intents.default()
@@ -111,7 +112,15 @@ async def on_command_error(ctx, error):
 
 @bot.event
 async def on_ready():
-    await bot.tree.sync()  # Sync slash commands
+    if not GUILD_IDS:
+        print("Warning: No GUILD_IDS found. Slash commands will only sync globally (slow update).")
+        await bot.tree.sync()
+    else:
+        for gid in GUILD_IDS:
+            guild = discord.Object(id=gid)
+            bot.tree.copy_global_to(guild=guild)
+            synced = await bot.tree.sync(guild=guild)
+            print(f"Synced {len(synced)} slash commands to guild {gid}.")
     print("Bot is now ready!")
 
 # Show who uses which command in powershells
