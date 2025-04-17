@@ -77,7 +77,7 @@ async def gettimezone(ctx):
     if user_timezone:
         await ctx.send(f"Your current timezone is set to: {user_timezone}.")
     else:
-        await ctx.send("You have not set a timezone yet. Use `!settimezone <timezone>` to set it.")
+        await ctx.send("You have not set a timezone yet. Use `!!settimezone <timezone>` to set it.")
 
 async def load_extensions():
     print("Loading extensions...")
