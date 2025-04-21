@@ -66,8 +66,8 @@ class TrackingCog(commands.Cog):
             )
             for rec in self.tracked:
                 embed.add_field(
-                    name=f"Pack #{rec['pack_number']} – {rec['owner']}",
-                    value=rec["contents"],
+                    name=f"Pack #{rec['PACK_NUMBER']} – {rec['OWNER']}",
+                    value=rec["CONTENTS"],
                     inline=False
                 )
             return await ctx.send(embed=embed)
@@ -75,7 +75,7 @@ class TrackingCog(commands.Cog):
         # --- PACK <n>: show one entry ---
         if action == "pack" and arg and arg.isdigit():
             num = int(arg)
-            rec = next((r for r in self.tracked if r["pack_number"] == num), None)
+            rec = next((r for r in self.tracked if r["PACK_NUMBER"] == num), None)
             if not rec:
                 return await ctx.send(f"❌ No entry found for pack #{num}.")
             template = self.get_pack_tracking_format()
@@ -155,12 +155,12 @@ class TrackingCog(commands.Cog):
     @app_commands.choices(pack1_rarity=[
         app_commands.Choice(name="⭐ ⭐", value="⭐ ⭐"),
         app_commands.Choice(name="⭐",   value="⭐"),
-        app_commands.Choice(name="♦ ♦ ♦ ♦", value="♦ ♦ ♦ ♦"),
+        app_commands.Choice(name="♦️♦️♦️♦️", value="♦️♦️♦️♦️"),
     ],
     pack2_rarity=[
         app_commands.Choice(name="⭐ ⭐", value="⭐ ⭐"),
         app_commands.Choice(name="⭐",   value="⭐"),
-        app_commands.Choice(name="♦ ♦ ♦ ♦", value="♦ ♦ ♦ ♦"),
+        app_commands.Choice(name="♦️♦️♦️♦️", value="♦️♦️♦️♦️"),
     ])
     async def tracking_slash(
         self, interaction: discord.Interaction,
