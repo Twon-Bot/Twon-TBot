@@ -70,7 +70,7 @@ class Schedule(commands.Cog):
             )
 
             if user:
-                await ctx.send(f"✅ Timezone for {target.mention} set to **{timezone}**.")
+                await ctx.send(f"✅ Timezone for {target.id} set to **{timezone}**.")
             else:
                 await ctx.send(f"✅ Your timezone has been set to **{timezone}**.")
         except pytz.UnknownTimeZoneError:
