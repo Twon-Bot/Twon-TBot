@@ -40,3 +40,4 @@ write_savefile.py
 your_database.db
 *.docx
 ~$*
+aiart.py

@@ -106,7 +106,6 @@ async def load_extensions():
         await bot.load_extension('timestamp')
         await bot.load_extension('tony')
         await bot.load_extension('happytree')
-        await bot.load_extension('aiart')
         await bot.load_extension('livepackowner')
         print("Extensions loaded successfully.")
         print("Registered commands:", [cmd.name for cmd in bot.commands])
