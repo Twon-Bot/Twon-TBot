@@ -89,7 +89,7 @@ class Schedule(commands.Cog):
         else:
             await ctx.send(f"✅ Timezone for {target.id} has been set to **{timezone}**.")
 
-    @commands.command(name="time", aliases=["t"])
+    @commands.command(name="time")
     @commands.has_any_role('The BotFather', 'Moderator', 'Manager', 'Server Owner', 'Police')
     async def show_time(self, ctx):
         """Displays the current time based on your timezone setting."""
