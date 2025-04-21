@@ -155,6 +155,7 @@ async def main():
     # connect to Postgres, make sure timezones table exists...
     DATABASE_URL = os.getenv("DATABASE_URL")
     if not DATABASE_URL:
+        print(f"DATABASE_URL from env: {os.getenv('DATABASE_URL')}")
         raise ValueError("DATABASE_URL is not set in the environment!")
     bot.pg_pool = await asyncpg.create_pool(DATABASE_URL)
     await bot.pg_pool.execute("""
