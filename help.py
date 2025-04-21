@@ -136,7 +136,7 @@ class HelpCog(commands.Cog):
         elif topic in ['testannounce', 'testann', 'ta']:
             embed = discord.Embed(
                 title="!!testannounce  //  !!testann  //  !!ta",
-                description="Post an announcement to the **test announcement channel** instead of the real one.\nExample: `!!testannounce packdrop`",
+                description="Post an announcement to the **test announcement channel** instead of the real one.\nExample: `!!testannounce Voting Start`",
                 color=0xFFC107
             )
             await send(embed=embed, ephemeral=is_inter)
