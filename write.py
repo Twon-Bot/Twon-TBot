@@ -5,7 +5,7 @@ class WriteCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
     
-    @commands.command(aliases=["type", "say", "text"])
+    @commands.command(aliases=["type", "say", "text", "w"])
     @commands.has_any_role('The BotFather', 'Server Owner')
     async def write(self, ctx, *, message: str):
         try:
