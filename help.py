@@ -173,7 +173,7 @@ class HelpCog(commands.Cog):
             )
             await send(embed=embed, ephemeral=is_inter)
 
-        elif topic in ['time', 't']:
+        elif topic == 'time':
             embed = discord.Embed(
                 title="!!time",
                 description="Display the current time based on your set timezone.",
