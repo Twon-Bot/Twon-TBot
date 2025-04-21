@@ -1,0 +1,11 @@
+===
+Pack Tracking
+**📦 Pack 0{PACK_NUMBER} 📦 **
+- **{OWNER} -> {CONTENTS}**
+
+🔍 **Pack Verification:**  
+({VERIFICATION_LINK})
+
+**Dies at: {EXPIRE_TIME}**
+_____
+

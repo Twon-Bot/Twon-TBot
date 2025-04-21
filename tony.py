@@ -6,7 +6,8 @@ class TonyCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.command()
+    @commands.command(aliases=["ton"])
+    @commands.has_any_role('Server Owner', 'Manager', 'Moderator', 'The BotFather', 'Police')
     async def tony(self, ctx):
         # Tony's user ID and mention
         tony_id = 317373446541672448

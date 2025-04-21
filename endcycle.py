@@ -13,8 +13,8 @@ class EndCycleCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.command(name='endcycle', aliases=["endc"])
-    @commands.has_any_role('Spreadsheet-Master', 'Server Owner', 'Manager', 'Moderator')
+    @commands.command(name='endcycle', aliases=["endc", "ec"])
+    @commands.has_any_role('The BotFather', 'Spreadsheet-Master', 'Server Owner', 'Manager', 'Moderator')
     async def endcycle(self, ctx, *, message: str = None):
         # Check if the cycle number was provided.
         if message is None:

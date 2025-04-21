@@ -5,8 +5,8 @@ class WriteCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
     
-    @commands.command()
-    @commands.has_any_role('Spreadsheet-Master', 'Server Owner')
+    @commands.command(aliases=["type", "say", "text"])
+    @commands.has_any_role('The BotFather', 'Server Owner')
     async def write(self, ctx, *, message: str):
         try:
             await ctx.message.delete()  # Delete the original message

@@ -187,6 +187,14 @@ class PollCog(commands.Cog):
         self.bot = bot
         self.polls = {}
 
+    async def get_user_timezone(self, user_id):
+        """Fetch a user's timezone from Postgres (default UTC)."""
+        row = await self.bot.pg_pool.fetchrow(
+            "SELECT timezone FROM timezones WHERE user_id = $1",
+            user_id
+        )
+        return row["timezone"] if row and row["timezone"] else "UTC"
+
     # Shared callbacks for add_option and settings
     async def add_option_callback(self, interaction: discord.Interaction):
         pid = interaction.message.id
@@ -200,12 +208,15 @@ class PollCog(commands.Cog):
         roles = [r.name for r in interaction.user.roles]
         if not any(r in roles for r in ('Server Owner','Manager','Moderator')):
             return await interaction.response.send_message("No permission.", ephemeral=True)
-        dm = await interaction.user.create_dm()
-        await dm.send("Poll Settings:", view=SettingsView(self, poll, interaction.message.id))
-        await interaction.response.send_message("Sent settings via DM.", ephemeral=True)
-
-    @commands.command()
-    @commands.has_any_role('Moderator', 'Manager', 'Server Owner')
+        # Instead of DMing, send the settings view ephemerally in the same channel:
+        await interaction.response.send_message(
+            "Poll Settings:",
+            view=SettingsView(self, poll, interaction.message.id),
+            ephemeral=True
+        )
+        
+    @commands.command(aliases=["p"])
+    @commands.has_any_role('Moderator', 'Manager', 'Server Owner', 'Police', 'The BotFather')
     async def poll(self, ctx, *, args: str):
         """
         Create a poll. Format:
@@ -231,7 +242,8 @@ class PollCog(commands.Cog):
         end_time = None
         if re.match(r"^\d{2}/\d{2} \d{2}:\d{2}$", parts[-1]):
             try:
-                tz = pytz.timezone(get_user_timezone(ctx.author.id))
+                user_tz_str = await self.get_user_timezone(ctx.author.id)
+                tz = pytz.timezone(user_tz_str)
                 dt = datetime.strptime(parts[-1], "%m/%d %H:%M").replace(year=datetime.now(tz).year)
                 end_time = tz.localize(dt).astimezone(pytz.utc)
                 parts = parts[:-1]
@@ -395,7 +407,8 @@ class PollCog(commands.Cog):
         }
         if end_time:
             try:
-                tz = pytz.timezone(get_user_timezone(interaction.user.id))
+                user_tz_str = await self.get_user_timezone(interaction.user.id)
+                tz = pytz.timezone(user_tz_str)
                 dt = datetime.strptime(end_time, "%m/%d %H:%M").replace(year=datetime.now(tz).year)
                 poll_data['end_time'] = tz.localize(dt).astimezone(pytz.utc)
             except Exception as e:

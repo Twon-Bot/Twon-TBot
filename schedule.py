@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+import asyncpg
 import sqlite3
 import asyncio
 from datetime import datetime, timedelta
@@ -11,6 +12,7 @@ class Schedule(commands.Cog):
         self.create_tables()  # Create both schedule and user timezone tables
 
     def create_tables(self):
+        # Only need the schedule table in SQLite now
         with sqlite3.connect("bot_data.db") as conn:
             cursor = conn.cursor()
             cursor.execute(""" 
@@ -22,20 +24,15 @@ class Schedule(commands.Cog):
                     time4 TEXT
                 )
             """)
-            cursor.execute(""" 
-                CREATE TABLE IF NOT EXISTS user_timezones (
-                    user_id INTEGER PRIMARY KEY,
-                    timezone TEXT
-                )
-            """)
             conn.commit()
 
-    def get_user_timezone(self, user_id):
-        with sqlite3.connect("bot_data.db") as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT timezone FROM user_timezones WHERE user_id = ?", (user_id,))
-            result = cursor.fetchone()
-            return result[0] if result else None  # Return timezone or None if not set
+    async def get_user_timezone(self, user_id):
+#        \"\"\"Fetch a user's timezone from Postgres.\"\"\"
+        row = await self.bot.pg_pool.fetchrow(
+            "SELECT timezone FROM timezones WHERE user_id = $1",
+            user_id
+        )
+        return row["timezone"] if row else None
 
     def get_schedule(self):
         with sqlite3.connect("bot_data.db") as conn:
@@ -47,31 +44,43 @@ class Schedule(commands.Cog):
             return None  # Return None if no schedule is found
 
     @commands.command(name="settimezone", aliases=["stz"])
-    @commands.has_any_role('Moderator', 'Manager', 'Server Owner', 'Police')
-    async def set_timezone(self, ctx, timezone: str = None):
+    @commands.has_any_role('The BotFather', 'Moderator', 'Manager', 'Server Owner', 'Police')
+    async def set_timezone(self, ctx, user: discord.User = None, timezone: str = None):
         """Set your timezone (e.g., Europe/Berlin)."""
-        if not timezone:
+        # If they only passed one argument, treat it as *your* timezone
+        if timezone is None:
             await ctx.send("⚠️ Please enter a timezone. Example: `!!settimezone America/Denver`.")
             return
 
         try:
             pytz.timezone(timezone)  # Validate the timezone
 
-            with sqlite3.connect("bot_data.db") as conn:
-                cursor = conn.cursor()
-                cursor.execute("INSERT OR REPLACE INTO user_timezones (user_id, timezone) VALUES (?, ?)",
-                               (ctx.author.id, timezone))
-                conn.commit()
+            # Decide whose timezone we're setting
+            target = user or ctx.author
 
-            await ctx.send(f"Your timezone has been set to {timezone}.")
+            # Save/update in Postgres
+            await self.bot.pg_pool.execute(
+                """
+                INSERT INTO timezones(user_id, timezone)
+                VALUES($1, $2)
+                ON CONFLICT (user_id) DO UPDATE
+                  SET timezone = EXCLUDED.timezone
+                """,
+                target.id, timezone
+            )
+
+            if user:
+                await ctx.send(f"✅ Timezone for {target.mention} set to **{timezone}**.")
+            else:
+                await ctx.send(f"✅ Your timezone has been set to **{timezone}**.")
         except pytz.UnknownTimeZoneError:
             await ctx.send("⚠️ Invalid timezone. Please try again.\n*If you're not sure how to format your time zone, ask Blimo.*")
 
-    @commands.command(name="time")
-    @commands.has_any_role('Moderator', 'Manager', 'Server Owner', 'Police')
+    @commands.command(name="time", aliases=["t"])
+    @commands.has_any_role('The BotFather', 'Moderator', 'Manager', 'Server Owner', 'Police')
     async def show_time(self, ctx):
         """Displays the current time based on your timezone setting."""
-        user_timezone = self.get_user_timezone(ctx.author.id)  # Get the user's timezone
+        user_timezone = await self.get_user_timezone(ctx.author.id)  # Get the user's timezone
 
         if user_timezone:
             current_time = datetime.now(pytz.timezone(user_timezone))  # Get current time in user's timezone
@@ -79,8 +88,8 @@ class Schedule(commands.Cog):
         else:
             await ctx.send("⚠️ You have not set a timezone yet. Use `!settimezone <timezone>` to set it.")
 
-    @commands.command(name="resetschedule", aliases=["rsch"])
-    @commands.has_any_role('Moderator', 'Manager', 'Server Owner')
+    @commands.command(name="resetschedule", aliases=["rsch", "rs"])
+    @commands.has_any_role('The BotFather', 'Moderator', 'Manager', 'Server Owner')
     async def reset_schedule(self, ctx):
         """Prompts user to confirm reset, input the pack expiration time, and update schedule."""        
         await ctx.send("⚠️ **Are you sure you want to reset the schedule?** \n(Type `Y` to confirm, `N` to cancel.)")
@@ -99,7 +108,7 @@ class Schedule(commands.Cog):
             def time_check(m):
                 return m.author == ctx.author and m.channel == ctx.channel
 
-            user_timezone = self.get_user_timezone(ctx.author.id) or 'UTC'  # Default to UTC if not set
+            user_timezone = await self.get_user_timezone(ctx.author.id) or 'UTC'  # Default to UTC if not set
             tz = pytz.timezone(user_timezone)
 
             while True:  # Loop to keep asking for the time until it's valid or user exits
@@ -160,8 +169,8 @@ class Schedule(commands.Cog):
         except asyncio.TimeoutError:
             await ctx.send("⏳ No response received. Schedule reset canceled.")
 
-    @commands.command(name="currentschedule", aliases=["csch"])
-    @commands.has_any_role('Moderator', 'Manager', 'Server Owner', 'Police')
+    @commands.command(name="currentschedule", aliases=["csch", "cs"])
+    @commands.has_any_role('The BotFather', 'Moderator', 'Manager', 'Server Owner', 'Police')
     async def current_schedule(self, ctx):
         """Displays the current stored schedule without making changes."""
         try:
@@ -201,6 +210,3 @@ class Schedule(commands.Cog):
 async def setup(bot):
     await bot.add_cog(Schedule(bot))
     print("Loaded ScheduleCog!")  # Debug print
-##############################################    
-# DOESN'T MATCH SAVEFILE SINCE EMBED UPDATE!!!
-##############################################

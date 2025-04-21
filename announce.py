@@ -188,8 +188,8 @@ class AnnouncementCog(commands.Cog):
                             await target_channel.send(embed=embed)
             await ctx.send("Announcement confirmed.")
 
-    @commands.command(aliases=["ann"])
-    @commands.has_any_role('Moderator', 'Manager', 'Server Owner')
+    @commands.command(aliases=["ann", "a"])
+    @commands.has_any_role('The BotFather', 'Moderator', 'Manager', 'Server Owner')
     async def announce(self, ctx, *, message: str = None):
         if message is None:
             await ctx.send('Error: Please provide an announcement. Try **"!!help announce"** for available options.')
@@ -221,7 +221,7 @@ class AnnouncementCog(commands.Cog):
                 return
             check_time_input = time_msg.content.strip()
             schedule_cog = self.bot.get_cog("Schedule")
-            user_timezone = schedule_cog.get_user_timezone(ctx.author.id) if schedule_cog else "UTC"
+            user_timezone = await schedule_cog.get_user_timezone(ctx.author.id) if schedule_cog else "UTC"
             tz = pytz.timezone(user_timezone)
             try:
                 local_time = datetime.strptime(check_time_input, "%m/%d %H:%M")
@@ -322,8 +322,8 @@ class AnnouncementCog(commands.Cog):
         except asyncio.TimeoutError:
             await ctx.send("Announcement confirmation timed out. Please try again.")
 
-    @commands.command(aliases=["testann"])
-    @commands.has_any_role('Moderator', 'Manager', 'Server Owner')
+    @commands.command(aliases=["testann", "ta"])
+    @commands.has_any_role('The BotFather', 'Moderator', 'Manager', 'Server Owner')
     async def testannounce(self, ctx, *, message: str = None):
         if message is None:
             await ctx.send('Error: Please provide an announcement. Try **"!!help announce"** for available options.')
@@ -386,7 +386,7 @@ class AnnouncementCog(commands.Cog):
                 return
             check_time_input = time_msg.content.strip()
             schedule_cog = self.bot.get_cog("Schedule")
-            user_timezone = schedule_cog.get_user_timezone(ctx.author.id) if schedule_cog else "UTC"
+            user_timezone = await schedule_cog.get_user_timezone(ctx.author.id) if schedule_cog else "UTC"
             tz = pytz.timezone(user_timezone)
             try:
                 local_time = datetime.strptime(check_time_input, "%m/%d %H:%M")

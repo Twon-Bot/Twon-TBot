@@ -1,6 +1,5 @@
 import discord
 import pytz
-import sqlite3
 from discord.ext import commands
 from datetime import datetime, timedelta, time
 
@@ -8,15 +7,16 @@ class ExpiryCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    def get_user_timezone(self, user_id):
-        with sqlite3.connect("bot_data.db") as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT timezone FROM user_timezones WHERE user_id = ?", (user_id,))
-            result = cursor.fetchone()
-            return result[0] if result else None
+    async def get_user_timezone(self, user_id):
+        """Fetch a user's timezone from Postgres."""
+        row = await self.bot.pg_pool.fetchrow(
+            "SELECT timezone FROM timezones WHERE user_id = $1",
+            user_id
+        )
+        return row["timezone"] if row else None
 
-    @commands.command(name='expire', aliases=['expiry'])
-    @commands.has_any_role('Moderator', 'Manager', 'Server Owner', 'Police')
+    @commands.command(name='expire', aliases=['expiry', 'e', 'exp'])
+    @commands.has_any_role('The BotFather', 'Moderator', 'Manager', 'Server Owner', 'Police')
     async def expire(self, ctx, *, date_time: str = None):
         """Calculates pack expiry time based on user input."""
         if not date_time:
@@ -24,7 +24,7 @@ class ExpiryCog(commands.Cog):
                            "Example: `!!expire 03/24 2:00` (when you opened the pack).")
             return
 
-        user_timezone_str = self.get_user_timezone(ctx.author.id)
+        user_timezone_str = await self.get_user_timezone(ctx.author.id)
         if not user_timezone_str:
             await ctx.send("You have not set a timezone yet. Use `!!settimezone <timezone>` to set it.")
             return
@@ -53,11 +53,15 @@ class ExpiryCog(commands.Cog):
             # Use the local expiry's Unix timestamp directly.
             discord_timestamp = f"<t:{int(expiry_local.timestamp())}:F>"
 
-            await ctx.send(f"Your pack will expire at **{expiry_local.strftime('%m/%d %H:%M')}** {expiry_local.strftime('%Z')} ({discord_timestamp})")
+            await ctx.send(
+                f"Your pack will expire at **{expiry_local.strftime('%m/%d %H:%M')}** {expiry_local.strftime('%Z')} ({discord_timestamp})"
+            )
         except Exception as e:
-            await ctx.send("Invalid date/time format. Please use `!!expire MM/DD HH:MM` where the date and time are when the pack was first opened.")
+            await ctx.send(
+                "Invalid date/time format. Please use `!!expire MM/DD HH:MM` where the date and time are when the pack was first opened."
+            )
             print(f"Error parsing date/time: {e}")
 
 async def setup(bot):
     await bot.add_cog(ExpiryCog(bot))
-    print ("Loaded ExpiryCog!")
+    print("Loaded ExpiryCog!")

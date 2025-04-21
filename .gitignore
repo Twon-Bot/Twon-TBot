@@ -3,6 +3,7 @@ discoord-bot-sqlite-530949af8e55.json
 bot-2-ptcgp-d4655f27e346.json
 __pycache__
 added.py
+addingschedule_savefile.py
 announce_savefile.py
 announce_savefile2.py
 announce_test.py
@@ -31,6 +32,7 @@ sqlite3_analyzer.exe
 sqlite3_rsync.exe
 Task List.docx
 test_schedule.py
+timestamp_savefile.py
 tracking_savefile.py
 verify_data.py
 verify_database.py

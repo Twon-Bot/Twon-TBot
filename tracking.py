@@ -1,51 +1,98 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
 import asyncio
 from datetime import datetime
 import pytz
-import sqlite3  # Needed to fetch the user's timezone from the database
+import json
+import os
+
+TRACKING_JSON = "tracking_data.json"
+TRACKING_TEMPLATE = "tracking.txt"
 
 class TrackingCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    def get_user_timezone(self, user_id):
-        """
-        Fetch the user's timezone from the database.
-        Returns the timezone string (e.g., "America/Denver") or None if not set.
-        """
-        try:
-            with sqlite3.connect("bot_data.db") as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT timezone FROM user_timezones WHERE user_id = ?", (user_id,))
-                result = cursor.fetchone()
-                return result[0] if result else None
-        except Exception:
-            return None
+        # --- ensure our JSON store exists ---
+        if not os.path.exists(TRACKING_JSON):
+            with open(TRACKING_JSON, "w") as f:
+                json.dump([], f)
+        with open(TRACKING_JSON, "r") as f:
+            self.tracked = json.load(f)
+
+    async def _save(self):
+        with open(TRACKING_JSON, "w") as f:
+            json.dump(self.tracked, f, indent=2)
+
+    async def get_user_timezone(self, user_id):
+        row = await self.bot.pg_pool.fetchrow(
+            "SELECT timezone FROM timezones WHERE user_id = $1",
+            user_id
+        )
+        return row["timezone"] if row else None
 
     def get_pack_tracking_format(self):
-        """
-        Reads the announcements.txt file and returns the Pack Tracking section.
-        Looks for the section that includes "Pack Tracking" and returns the layout (ignoring the header line).
-        """
         try:
-            with open("announcements.txt", "r", encoding="utf-8") as file:
+            with open(TRACKING_TEMPLATE, "r", encoding="utf-8") as file:
                 sections = file.read().split("===")
                 for section in sections:
                     if "Pack Tracking" in section:
                         lines = section.strip().splitlines()
-                        if lines:
-                            # Assume the first line is the header, so return the rest.
-                            return "\n".join(lines[1:]).strip()
-            return None
+                        return "\n".join(lines[1:]).strip() if lines else None
         except FileNotFoundError:
             return None
 
-    @commands.command(name="tracking")
-    @commands.has_any_role('Moderator', 'Manager', 'Server Owner')
-    async def tracking(self, ctx):
+    # ─── prefix command with sub‑actions ───
+    @commands.command(name="tracking", aliases=["track"])
+    @commands.has_any_role('The BotFather', 'Moderator', 'Manager', 'Server Owner')
+    async def tracking(self, ctx, action: str = None, arg: str = None):
+        """  
+        No args: prompt for a new tracking entry.  
+        Sub‑commands:  
+          clear/empty, packs, pack <n>, output  
+        """
+        # --- CLEAR / EMPTY ---
+        if action in ("clear", "empty"):
+            self.tracked.clear()
+            await self._save()
+            return await ctx.send("✅ All tracking entries have been cleared.")
+
+        # --- PACKS: list summaries ---
+        if action == "packs":
+            embed = discord.Embed(
+                title=f"🌸 {len(self.tracked)} Tracked Packs",
+                color=0xFF69B4
+            )
+            for rec in self.tracked:
+                embed.add_field(
+                    name=f"Pack #{rec['pack_number']} – {rec['owner']}",
+                    value=rec["contents"],
+                    inline=False
+                )
+            return await ctx.send(embed=embed)
+
+        # --- PACK <n>: show one entry ---
+        if action == "pack" and arg and arg.isdigit():
+            num = int(arg)
+            rec = next((r for r in self.tracked if r["pack_number"] == num), None)
+            if not rec:
+                return await ctx.send(f"❌ No entry found for pack #{num}.")
+            template = self.get_pack_tracking_format()
+            text = template.format(**rec)
+            return await ctx.send(text)
+
+        # --- OUTPUT: show all saved entries back‑to‑back ---
+        if action == "output":
+            await ctx.message.delete()
+            template = self.get_pack_tracking_format()
+            for rec in self.tracked:
+                await ctx.send(template.format(**rec))
+            return
+
+        # --- otherwise: fall back to prompting a new entry ---
         prompt = (
-            "**Please provide the following details separated by commas:**\n"
+            "**Please provide:**\n"
             "Pack Number,\n"
             "Owner,\n"
             "Pack Contents,\n"
@@ -54,66 +101,110 @@ class TrackingCog(commands.Cog):
         )
         await ctx.send(prompt)
 
-        def check(message):
-            return message.author == ctx.author and message.channel == ctx.channel
+        def check(m): return m.author == ctx.author and m.channel == ctx.channel
 
         try:
-            response = await self.bot.wait_for("message", check=check, timeout=120)
-            data = [part.strip() for part in response.content.split(",")]
+            msg = await self.bot.wait_for("message", check=check, timeout=120)
+            parts = [p.strip() for p in msg.content.split(",")]
+            if len(parts) != 5:
+                return await ctx.send("❌ Need exactly 5 comma‑separated values.")
+            pack_number, owner, contents, expire_time, verification_link = parts
 
-            if len(data) != 5:
-                await ctx.send("Error: Invalid format. Please provide exactly 5 parts separated by commas.")
-                return
-
-            pack_number, owner, contents, expire_time, verification_link = data
-
-            # Convert expiry date to a Discord timestamp using the user's specific timezone.
+            # convert expire_time to <t:...:F>
             try:
-                # Parse the provided expiry time string into a naive datetime.
-                expiry_dt = datetime.strptime(expire_time, "%m/%d %H:%M")
-                
-                # Retrieve the user's timezone from the database; default to "UTC" if not set.
-                user_tz_str = self.get_user_timezone(ctx.author.id) or "UTC"
-                tz = pytz.timezone(user_tz_str)
-                
-                # Set the year based on the current year in the user's timezone.
-                current_year = datetime.now(tz).year
-                expiry_dt = expiry_dt.replace(year=current_year)
-                
-                # Localize the naive datetime so it becomes timezone-aware.
-                expiry_dt = tz.localize(expiry_dt)
-                
-                # Convert the localized time to UTC to generate the proper Unix timestamp.
-                utc_time = expiry_dt.astimezone(pytz.utc)
-                timestamp = int(utc_time.timestamp())
-                
-                # Build the Discord timestamp format (<t:TIMESTAMP:F>).
-                expire_time = f"<t:{timestamp}:F>"
-            except Exception as e:
-                # If conversion fails, log the error and use the raw input.
-                print(f"Error converting expiry time: {e}")
+                dt = datetime.strptime(expire_time, "%m/%d %H:%M")
+                tz = pytz.timezone(await self.get_user_timezone(ctx.author.id) or "UTC")
+                dt = dt.replace(year=datetime.now(tz).year)
+                dt = tz.localize(dt).astimezone(pytz.utc)
+                expire_time = f"<t:{int(dt.timestamp())}:F>"
+            except:
                 pass
 
-            # Get the pack tracking format template from announcements.txt.
-            format_template = self.get_pack_tracking_format()
-            if not format_template:
-                await ctx.send("Error: Could not load the Pack Tracking format from announcements.txt.")
-                return
+            rec = {
+                "pack_number": int(pack_number),
+                "owner": owner,
+                "contents": contents,
+                "EXPIRE_TIME": expire_time,
+                "VERIFICATION_LINK": verification_link
+            }
+            # send formatted
+            template = self.get_pack_tracking_format()
+            text = template.format(**rec)
+            await ctx.send(text)
 
-            # Replace the placeholders in the template with the provided values.
-            announcement_text = format_template.format(
-                PACK_NUMBER=pack_number,
-                OWNER=owner,
-                CONTENTS=contents,
-                EXPIRE_TIME=expire_time,
-                VERIFICATION_LINK=verification_link
-            )
-
-            # Output the final announcement in the current channel.
-            await ctx.send(announcement_text)
+            # save
+            self.tracked.append(rec)
+            await self._save()
 
         except asyncio.TimeoutError:
-            await ctx.send("Error: Timed out. Please try again and respond within 120 seconds.")
+            await ctx.send("❌ Timed out—please try again.")
+
+    # ─── slash command /tracking ───
+    @app_commands.command(name="tracking", description="Track a new pack or view existing")
+    @commands.has_any_role('The BotFather', 'Moderator', 'Manager', 'Server Owner')
+    @app_commands.describe(
+        pack_number="1–6",
+        owner="Owner's name",
+        expire_time="MM/DD HH:MM",
+        verification_link="URL",
+        pack1_rarity="Rarity of pack 1",
+        pack1_contents="Contents of pack 1",
+        pack2_rarity="(optional) Rarity of pack 2",
+        pack2_contents="(optional) Contents of pack 2"
+    )
+    @app_commands.choices(pack1_rarity=[
+        app_commands.Choice(name="⭐ ⭐", value="⭐ ⭐"),
+        app_commands.Choice(name="⭐",   value="⭐"),
+        app_commands.Choice(name="♦ ♦ ♦ ♦", value="♦ ♦ ♦ ♦"),
+    ],
+    pack2_rarity=[
+        app_commands.Choice(name="⭐ ⭐", value="⭐ ⭐"),
+        app_commands.Choice(name="⭐",   value="⭐"),
+        app_commands.Choice(name="♦ ♦ ♦ ♦", value="♦ ♦ ♦ ♦"),
+    ])
+    async def tracking_slash(
+        self, interaction: discord.Interaction,
+        pack_number: app_commands.Range[int,1,6],
+        owner: str,
+        expire_time: str,
+        verification_link: str,
+        pack1_rarity: app_commands.Choice[str],
+        pack1_contents: str,
+        pack2_rarity: app_commands.Choice[str] = None,
+        pack2_contents: str = None,
+    ):
+        await interaction.response.defer(ephemeral=False)
+
+        # combine rarities + contents
+        contents = f"{pack1_rarity.value} {pack1_contents}"
+        if pack2_rarity and pack2_contents:
+            contents += f" + {pack2_rarity.value} {pack2_contents}"
+
+        # parse expire_time
+        try:
+            dt = datetime.strptime(expire_time, "%m/%d %H:%M")
+            tz = pytz.timezone(await self.get_user_timezone(interaction.user.id) or "UTC")
+            dt = dt.replace(year=datetime.now(tz).year)
+            dt = tz.localize(dt).astimezone(pytz.utc)
+            expire_code = f"<t:{int(dt.timestamp())}:F>"
+        except:
+            expire_code = expire_time
+
+        rec = {
+            "pack_number": pack_number,
+            "owner": owner,
+            "contents": contents,
+            "EXPIRE_TIME": expire_code,
+            "VERIFICATION_LINK": verification_link
+        }
+
+        # send
+        template = self.get_pack_tracking_format()
+        await interaction.followup.send(template.format(**rec))
+
+        # save
+        self.tracked.append(rec)
+        await self._save()
 
 async def setup(bot):
     await bot.add_cog(TrackingCog(bot))

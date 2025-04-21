@@ -6,7 +6,7 @@ class DeleteCog(commands.Cog):
         self.bot = bot
 
     @commands.command(name='delete', aliases=['del'])
-    @commands.has_any_role('Spreadsheet-Master', 'Server Owner', 'Manager', 'Moderator')
+    @commands.has_any_role('The BotFather', 'Spreadsheet-Master', 'Server Owner', 'Manager', 'Moderator')
     async def delete(self, ctx, num: int = 1):
         """
         Deletes the command message along with the previous num messages.

@@ -16,7 +16,7 @@ class AIArtCog(commands.Cog):
             print("Warning: OPENAI_API_KEY environment variable not set.")
         openai.api_key = self.api_key
 
-    @commands.command(aliases=["ai"])
+    @commands.command(aliases=["ai", "aia", "art", "output", "output a"])
     @commands.has_role('The BotFather')
     async def aiart(self, ctx, *, prompt: str = "a happy tree in a fantasy forest"):
         """

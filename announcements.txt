@@ -475,14 +475,3 @@ To ensure fairness, we are implementing **special punishments** for those who sl
 ### ~ The Mod Team 🛠️
 
 
-===
-Pack Tracking
-**📦 Pack 0{PACK_NUMBER} 📦 **
-- **{OWNER} -> {CONTENTS}**
-
-🔍 **Pack Verification:**  
-({VERIFICATION_LINK})
-
-**Dies at: {EXPIRE_TIME}**
-_____
-
