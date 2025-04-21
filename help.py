@@ -216,7 +216,12 @@ class HelpCog(commands.Cog):
         elif topic in ['tracking', 'track', 't']:
             embed = discord.Embed(
                 title="!!tracking",
-                description="Track which users are actively using bot features.",
+                description=(
+                    "- `!!tracking` → Outputs the tracking format and saves it to the .json\n"
+                    "- `!!tracking pack X` → Shows pack number X saved in the .json file\n"
+                    "- `!!tracking packs` → Displays a list of all currently saved packs in the .json file\n"
+                    "- `!!tracking clear` → Delets/Erases all currently saved tracking outputs from the .json"
+                ),
                 color=0xFFC107
             )
             await send(embed=embed, ephemeral=is_inter)
