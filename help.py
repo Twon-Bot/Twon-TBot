@@ -135,7 +135,7 @@ class HelpCog(commands.Cog):
 # Individual Commands
         elif topic in ['testannounce', 'testann', 'ta']:
             embed = discord.Embed(
-                title="!!testannounce | !!testann | !!ta",
+                title="!!testannounce  //  !!testann  //  !!ta",
                 description="Post an announcement to the **test announcement channel** instead of the real one.\nExample: `!!testannounce packdrop`",
                 color=0xFFC107
             )
@@ -143,7 +143,7 @@ class HelpCog(commands.Cog):
 
         elif topic in ['resetschedule', 'rsch', 'rs']:
             embed = discord.Embed(
-                title="!!resetschedule | !!rsch | !!rs",
+                title="!!resetschedule  //  !!rsch  //  !!rs",
                 description="Create a brand new schedule and overwrite any current schedule.\nFollow the prompts in Discord after running this command.",
                 color=0xFFC107
             )
@@ -151,7 +151,7 @@ class HelpCog(commands.Cog):
 
         elif topic in ['currentschedule', 'csch', 'cs']:
             embed = discord.Embed(
-                title="!!currentschedule | !!csch | !!cs",
+                title="!!currentschedule  //  !!csch  //  !!cs",
                 description="View the currently active schedule set for announcements.",
                 color=0xFFC107
             )
@@ -159,7 +159,7 @@ class HelpCog(commands.Cog):
 
         elif topic in ['settimezone', 'stz']:
             embed = discord.Embed(
-                title="!!settimezone | !!stz",
+                title="!!settimezone  //  !!stz",
                 description="Set your personal timezone.\nExample: `!!settimezone Europe/Berlin`",
                 color=0xFFC107
             )
@@ -167,7 +167,7 @@ class HelpCog(commands.Cog):
 
         elif topic in ['gettimezone', 'gtz']:
             embed = discord.Embed(
-                title="!!gettimezone | !!gtz",
+                title="!!gettimezone  //  !!gtz",
                 description="Show your currently set timezone.",
                 color=0xFFC107
             )
@@ -183,7 +183,7 @@ class HelpCog(commands.Cog):
 
         elif topic in ['viewdelay', 'vdelay', 'vd']:
             embed = discord.Embed(
-                title="!!viewdelay | !!vdelay | !!vd",
+                title="!!viewdelay  //  !!vdelay  //  !!vd",
                 description="View all currently scheduled delayed announcements.",
                 color=0xFFC107
             )
@@ -191,7 +191,7 @@ class HelpCog(commands.Cog):
 
         elif topic in ['canceldelay', 'cdelay', 'cd']:
             embed = discord.Embed(
-                title="!!canceldelay | !!cdelay | !!cd",
+                title="!!canceldelay  //  !!cdelay  //  !!cd",
                 description="Cancel a scheduled delayed announcement.\nFormat: `!!canceldelay MM/DD HH:MM`",
                 color=0xFFC107
             )
@@ -207,7 +207,7 @@ class HelpCog(commands.Cog):
 
         elif topic in ['expire', 'expiry', 'e']:
             embed = discord.Embed(
-                title="!!expire | !!expiry | !!e",
+                title="!!expire  //  !!expiry  //  !!e",
                 description="Calculate when your Pokémon packs will expire based on their date.",
                 color=0xFFC107
             )
@@ -215,7 +215,7 @@ class HelpCog(commands.Cog):
 
         elif topic in ['tracking', 'track', 't']:
             embed = discord.Embed(
-                title="!!tracking | !!track | !!t | /tracking",
+                title="!!tracking  //  !!track  //  !!t  //  /tracking",
                 description=(
                     "- `!!tracking` → Outputs the tracking format and saves it to the .json\n"
                     "- `!!tracking pack X` → Shows pack number X saved in the .json file\n"
@@ -228,7 +228,7 @@ class HelpCog(commands.Cog):
 
         elif topic in ['addingschedule', 'asch', 'as']:
             embed = discord.Embed(
-                title="!!addingschedule | !!asch | !!as",
+                title="!!addingschedule  //  !!asch  //  !!as",
                 description="Add events into an existing schedule without wiping the old one.",
                 color=0xFFC107
             )
@@ -236,7 +236,7 @@ class HelpCog(commands.Cog):
 
         elif topic in ['endcycle', 'endc', 'ec']:
             embed = discord.Embed(
-                title="!!endcycle | !!endc | !!ec",
+                title="!!endcycle  //  !!endc  //  !!ec",
                 description="Output the `End of Cycle X --- Start of Cycle Y` message in 6 channels.",
                 color=0xFFC107
             )
@@ -252,7 +252,7 @@ class HelpCog(commands.Cog):
 
         elif topic in ['write', 'w', 'type', 'say', 'text']:
             embed = discord.Embed(
-                title="!!write | !!w | !!type | !!say | !!text",
+                title="!!write  //  !!w  //  !!type  //  !!say  //  !!text",
                 description="A fun little command for the Dev.",
                 color=0xFFC107
             )
@@ -260,7 +260,7 @@ class HelpCog(commands.Cog):
 
         elif topic in ['del', 'delete']:
             embed = discord.Embed(
-                title="!!del | delete",
+                title="!!del  //  delete",
                 description="Command to delete previous messages.\n`!!del → Deletes 1 message`\n`!!del X → deletes up to 10 messages`",
                 color=0xFFC107
             )
@@ -276,7 +276,7 @@ class HelpCog(commands.Cog):
 
         elif topic in ['happytree', 'ht', 'haptree']:
             embed = discord.Embed(
-                title="!!happytree | !!ht | !!haptree",
+                title="!!happytree  //  !!ht  //  !!haptree",
                 description="**Bonus Feature**\nThis command is a useless command that outputs an ASCII tree.",
                 color=0xFFC107
             )
@@ -284,7 +284,7 @@ class HelpCog(commands.Cog):
 
         elif topic in ['aiart', 'ai', 'aa']:
             embed = discord.Embed(
-                title="!!aiart | ai | !!aa",
+                title="!!aiart  //  ai  //  !!aa",
                 description="**Broken**\nThis command is meant to utilize ChatGPT to output an image based off of a prompt. It doesn't work *lol*.",
                 color=0xFFC107
             )
@@ -292,7 +292,7 @@ class HelpCog(commands.Cog):
 
         elif topic in ['help', 'h']:
             embed = discord.Embed(
-                title="!!help | !!h",
+                title="!!help  //  !!h",
                 description="Show help menus for all available commands or a specific command.\nExample: `!!help poll`",
                 color=0xFFC107
             )
@@ -300,7 +300,7 @@ class HelpCog(commands.Cog):
 
         elif topic in ['livepackowner', 'livepackowners', 'lpo']:
             embed = discord.Embed(
-                title="!!livepackowner | !!livepackowners | !!lpo",
+                title="!!livepackowner  //  !!livepackowners  //  !!lpo",
                 description="Command to output the message for new Live Pack Owners.\n`!!lpo → Deletes your '!!lpo' input, then outputs the message.`",
                 color=0xFFC107
             )
@@ -355,8 +355,8 @@ class HelpCog(commands.Cog):
             embed = discord.Embed(
                 title="**Available Announcements:**",
                 description="- " + "\n- ".join(titles) +
-                            "\n\n**Input format:** `!!announce <name>` | `!!ann <name>` | `!!a <name>`\n" +
-                            "**Test:** `!!testannounce <name>` | `!!testann <name>` | `!!ta <name>`",
+                            "\n\n**Input format:** `!!announce <name>`  //  `!!ann <name>`  //  `!!a <name>`\n" +
+                            "**Test:** `!!testannounce <name>`  //  `!!testann <name>`  //  `!!ta <name>`",
                 color=0xFFC107
             )
         except Exception as e:
