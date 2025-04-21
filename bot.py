@@ -80,12 +80,12 @@ async def gettimezone(ctx, user: discord.User = None):
 
     if tz:
         if user:
-            await ctx.send(f"⏰ Timezone for {target.mention} is set to **{tz}**.")
+            await ctx.send(f"⏰ Timezone for {target.id} is set to **{tz}**.")
         else:
             await ctx.send(f"⏰ Your timezone is set to **{tz}**.")
     else:
         if user:
-            await ctx.send(f"❌ {target.mention} has no timezone set yet.")
+            await ctx.send(f"❌ {target.id} has no timezone set yet.")
         else:
             await ctx.send("❌ You have not set a timezone yet. Use `!!settimezone <timezone>` to set it.")
 

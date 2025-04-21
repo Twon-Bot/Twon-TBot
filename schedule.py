@@ -45,36 +45,49 @@ class Schedule(commands.Cog):
 
     @commands.command(name="settimezone", aliases=["stz"])
     @commands.has_any_role('The BotFather', 'Moderator', 'Manager', 'Server Owner', 'Police')
-    async def set_timezone(self, ctx, user: discord.User = None, timezone: str = None):
-        """Set your timezone (e.g., Europe/Berlin)."""
-        # If they only passed one argument, treat it as *your* timezone
-        if timezone is None:
-            await ctx.send("⚠️ Please enter a timezone. Example: `!!settimezone America/Denver`.")
-            return
+    async def set_timezone(self, ctx, first: str = None, second: str = None):
+        """
+        Set a timezone.
+        Usage:
+          !!stz Europe/Berlin          → sets *your* TZ
+          !!stz 123456789012345678 Zone → sets TZ for that user ID
+        """
+        if first is None:
+            return await ctx.send("⚠️ Usage: `!!settimezone [user] <timezone>` — e.g. `!!stz Europe/Berlin` or `!!stz 1234567890 America/Denver`.")
 
+        # figure out if they passed a user ID or mention
+        if second:
+            # two args: first is user, second is tz
+            try:
+                target = await commands.UserConverter().convert(ctx, first)
+            except commands.BadArgument:
+                return await ctx.send(f"⚠️ Could not find user `{first}`.")
+            timezone = second
+        else:
+            target = ctx.author
+            timezone = first
+
+        # validate the timezone string
         try:
-            pytz.timezone(timezone)  # Validate the timezone
-
-            # Decide whose timezone we're setting
-            target = user or ctx.author
-
-            # Save/update in Postgres
-            await self.bot.pg_pool.execute(
-                """
-                INSERT INTO timezones(user_id, timezone)
-                VALUES($1, $2)
-                ON CONFLICT (user_id) DO UPDATE
-                  SET timezone = EXCLUDED.timezone
-                """,
-                target.id, timezone
-            )
-
-            if user:
-                await ctx.send(f"✅ Timezone for {target.id} set to **{timezone}**.")
-            else:
-                await ctx.send(f"✅ Your timezone has been set to **{timezone}**.")
+            pytz.timezone(timezone)
         except pytz.UnknownTimeZoneError:
-            await ctx.send("⚠️ Invalid timezone. Please try again.\n*If you're not sure how to format your time zone, ask Blimo.*")
+            return await ctx.send("⚠️ Invalid timezone. Please try again (e.g. `Europe/Berlin`).")
+
+        # upsert into Postgres
+        await self.bot.pg_pool.execute(
+            """
+            INSERT INTO timezones(user_id, timezone)
+            VALUES($1, $2)
+            ON CONFLICT (user_id) DO UPDATE
+              SET timezone = EXCLUDED.timezone
+            """,
+            target.id, timezone
+        )
+
+        if target == ctx.author:
+            await ctx.send(f"✅ Your timezone has been set to **{timezone}**.")
+        else:
+            await ctx.send(f"✅ Timezone for {target.id} has been set to **{timezone}**.")
 
     @commands.command(name="time", aliases=["t"])
     @commands.has_any_role('The BotFather', 'Moderator', 'Manager', 'Server Owner', 'Police')
