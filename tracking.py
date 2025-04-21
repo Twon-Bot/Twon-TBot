@@ -121,9 +121,9 @@ class TrackingCog(commands.Cog):
                 pass
 
             rec = {
-                "pack_number": int(pack_number),
-                "owner": owner,
-                "contents": contents,
+                "PACK_NUMBER": int(pack_number),
+                "OWNER": owner,
+                "CONTENTS": contents,
                 "EXPIRE_TIME": expire_time,
                 "VERIFICATION_LINK": verification_link
             }
@@ -173,38 +173,50 @@ class TrackingCog(commands.Cog):
         pack2_rarity: app_commands.Choice[str] = None,
         pack2_contents: str = None,
     ):
+        # defer immediately so Discord shows “thinking…”
         await interaction.response.defer(ephemeral=False)
 
-        # combine rarities + contents
-        contents = f"{pack1_rarity.value} {pack1_contents}"
-        if pack2_rarity and pack2_contents:
-            contents += f" + {pack2_rarity.value} {pack2_contents}"
-
-        # parse expire_time
         try:
-            dt = datetime.strptime(expire_time, "%m/%d %H:%M")
-            tz = pytz.timezone(await self.get_user_timezone(interaction.user.id) or "UTC")
-            dt = dt.replace(year=datetime.now(tz).year)
-            dt = tz.localize(dt).astimezone(pytz.utc)
-            expire_code = f"<t:{int(dt.timestamp())}:F>"
-        except:
-            expire_code = expire_time
+            # combine rarities + contents
+            contents = f"{pack1_rarity.value} {pack1_contents}"
+            if pack2_rarity and pack2_contents:
+                contents += f" + {pack2_rarity.value} {pack2_contents}"
 
-        rec = {
-            "pack_number": pack_number,
-            "owner": owner,
-            "contents": contents,
-            "EXPIRE_TIME": expire_code,
-            "VERIFICATION_LINK": verification_link
-        }
+            # parse expire_time
+            try:
+                dt = datetime.strptime(expire_time, "%m/%d %H:%M")
+                tz = pytz.timezone(await self.get_user_timezone(interaction.user.id) or "UTC")
+                dt = dt.replace(year=datetime.now(tz).year)
+                dt = tz.localize(dt).astimezone(pytz.utc)
+                expire_code = f"<t:{int(dt.timestamp())}:F>"
+            except:
+                expire_code = expire_time
 
-        # send
-        template = self.get_pack_tracking_format()
-        await interaction.followup.send(template.format(**rec))
+            # match your template placeholders
+            rec = {
+                "PACK_NUMBER": pack_number,
+                "OWNER": owner,
+                "CONTENTS": contents,
+                "EXPIRE_TIME": expire_code,
+                "VERIFICATION_LINK": verification_link
+            }
 
-        # save
-        self.tracked.append(rec)
-        await self._save()
+            # guard against missing template
+            template = self.get_pack_tracking_format()
+            if not template:
+                return await interaction.followup.send(
+                    "⚠️ Could not load the tracking format. "
+                    "Please make sure `tracking.txt` has a “Pack Tracking” section."
+                )
+
+            # send and save
+            await interaction.followup.send(template.format(**rec))
+            self.tracked.append(rec)
+            await self._save()
+
+        except Exception as e:
+            # always send a response so the interaction completes
+            await interaction.followup.send(f"❌ Error: {e}")
 
 async def setup(bot):
     await bot.add_cog(TrackingCog(bot))
