@@ -171,6 +171,40 @@ class SettingsView(discord.ui.View):
         await msg.edit(embed=self.poll_data['build_embed'](self.poll_data), view=self.poll_data['view'])
         await interaction.response.send_message("Poll ended.", ephemeral=True)
 
+    @discord.ui.button(label="Export Votes", style=discord.ButtonStyle.primary)
+    async def export_votes(self, button: discord.ui.Button, interaction: discord.Interaction):
+        poll = self.poll_data
+
+        # Build CSV in memory
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(["User", "Vote"])
+
+        # 1) All votes
+        for uid, vote in poll['user_votes'].items():
+            member = interaction.guild.get_member(uid)
+            name = member.display_name if member else str(uid)
+            if isinstance(vote, list):
+                vote = ", ".join(vote)
+            writer.writerow([name, vote])
+
+        # 2) Non-voters in specific role
+        role = interaction.guild.get_role(1334747903427870742)
+        if role:
+            writer.writerow([])
+            writer.writerow(["=== Did Not Vote ==="])
+            for member in role.members:
+                if member.id not in poll['user_votes']:
+                    writer.writerow([member.display_name, ""])
+
+        buf.seek(0)
+        discord_file = discord.File(fp=io.BytesIO(buf.getvalue().encode()), filename="poll_export.csv")
+
+        # Send ephemerally to the clicking user
+        await interaction.response.send_message(
+            "Here’s the full export:", file=discord_file, ephemeral=True
+        )
+
     @discord.ui.button(label="Delete", style=discord.ButtonStyle.danger)
     async def delete(self, button: discord.ui.Button, interaction: discord.Interaction):
         if interaction.user.id != self.poll_data['author_id']:
@@ -300,13 +334,19 @@ class PollCog(commands.Cog):
             poll = self.polls.get(pid)
             if not poll or poll['closed']:
                 return await interaction.response.send_message("Poll closed.", ephemeral=True)
+
             uid = interaction.user.id
             choice = interaction.data['custom_id']
-            # handle single/multiple identical to your original logic, including removal flow
-            # ... [omitted for brevity; reuse your existing vote handling logic] ...
-            # After vote update:
+
+            # — your existing single/multiple‑vote logic here —
+            # make sure you update poll['user_votes'], poll['vote_count'], poll['total_votes']
+
+            # now respond AND update the message in one go:
             embed = poll['build_embed'](poll)
-            await interaction.message.edit(embed=embed, view=poll['view'])
+            view  = poll['view']
+
+            # Edit the original message
+            await interaction.response.edit_message(embed=embed, view=view)
 
         # Assemble view
         view = discord.ui.View(timeout=None)
@@ -359,7 +399,7 @@ class PollCog(commands.Cog):
         await asyncio.sleep(86400)
         self.polls.pop(message_id, None)
 
-    @app_commands.command(name="poll", description="Create a poll via slash command")
+    @app_commands.command(name="poll", description="Create a poll via slash")
     @app_commands.describe(
         question="The poll question",
         mentions="Text to mention (e.g. @everyone)",
@@ -381,47 +421,34 @@ class PollCog(commands.Cog):
                           option8: str = None,
                           option9: str = None,
                           option10: str = None):
-        opts = [o for o in [
+        # 1) Acknowledge immediately
+        await interaction.response.defer()
+
+        # 2) Gather options
+        opts = [o for o in (
             option1, option2, option3, option4, option5,
             option6, option7, option8, option9, option10
-        ] if o]
+        ) if o]
         if len(opts) < 2:
-            return await interaction.response.send_message("Provide at least 2 options.", ephemeral=True)
-        if len(opts) > 10:
-            return await interaction.response.send_message("Max 10 options.", ephemeral=True)
+            return await interaction.followup.send("Provide at least 2 options.", ephemeral=True)
 
-        # Build poll_data similar to command
-        poll_data = {
-            'question': question,
-            'options': opts.copy(),
-            'vote_count': {o: 0 for o in opts},
-            'total_votes': 0,
-            'user_votes': {},
-            'voting_type': 'multiple' if multiple else 'single',
-            'author': interaction.user.display_name,
-            'author_id': interaction.user.id,
-            'mention': bool(mentions),
-            'mention_text': mentions or '',
-            'end_time': None,
-            'closed': False
-        }
+        # 3) Reconstruct the text‐command style args string
+        parts = []
+        if mentions:
+            parts.append("mention")
+        if multiple:
+            parts.append("multiple")
+        # join question + all options, plus end_time if given
+        question_and_opts = question + " | " + " | ".join(opts)
         if end_time:
-            try:
-                user_tz_str = await self.get_user_timezone(interaction.user.id)
-                tz = pytz.timezone(user_tz_str)
-                dt = datetime.strptime(end_time, "%m/%d %H:%M").replace(year=datetime.now(tz).year)
-                poll_data['end_time'] = tz.localize(dt).astimezone(pytz.utc)
-            except Exception as e:
-                return await interaction.response.send_message(f"Error parsing end time: {e}", ephemeral=True)
+            question_and_opts += f" | {end_time}"
+        parts.append(question_and_opts)
+        args = " ".join(parts)
 
-        # reuse build_embed, format_results, vote_callback, view assembly as above
-        # ... [similar to poll command] ...
-        # finally:
-        await interaction.response.send_message(embed=poll_data['build_embed'](poll_data), view=poll_data['view'])
-        msg = await interaction.original_response()
-        self.polls[msg.id] = poll_data
-        if poll_data['end_time']:
-            self.bot.loop.create_task(self.schedule_poll_end(msg.id))
+        # 4) Create a Context and invoke your existing poll command
+        ctx = await commands.Context.from_interaction(interaction)
+        await self.poll.callback(self, ctx, args=args)
+        # (no additional defer/response needed— your poll command has already sent!)
 
 async def setup(bot):
     await bot.add_cog(PollCog(bot))
