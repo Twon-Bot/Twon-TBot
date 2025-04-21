@@ -78,7 +78,10 @@ class AddOptionModal(discord.ui.Modal, title="Add an Option"):
         idx = len(self.poll_data["options"]) - 1
         new_button = discord.ui.Button(label=OPTION_EMOJIS[idx], custom_id=option_text)
         new_button.callback = self.poll_data["button_callback"]
-        self.poll_data["view"].add_item(new_button)
+        # place it just before the last two items (➕ and ⚙️)
+        # place the new vote‑button before the ➕ and ⚙️ buttons
+        option_button_count = len(self.poll_data["options"]) - 1
+        self.poll_data["view"].insert_item(option_button_count, new_button)
 
         # Edit the poll message to show new option
         embed = self.poll_data["build_embed"](self.poll_data)
@@ -94,7 +97,10 @@ class SettingsView(discord.ui.View):
         self.message_id = message_id
 
     @discord.ui.button(label="Edit", style=discord.ButtonStyle.secondary)
-    async def edit(self, button: discord.ui.Button, interaction: discord.Interaction):
+    async def edit(self, button, interaction):
+        # ← add this
+        await interaction.response.defer(ephemeral=True)
+
         # Collect inputs: question, mentions, each option
         modal = discord.ui.Modal(title="Edit Poll")
         question_input = discord.ui.TextInput(label="Question", default=self.poll_data['question'], max_length=200)
@@ -142,7 +148,10 @@ class SettingsView(discord.ui.View):
         await interaction.response.send_modal(modal)
 
     @discord.ui.button(label="Voter List", style=discord.ButtonStyle.secondary)
-    async def voter_list(self, button: discord.ui.Button, interaction: discord.Interaction):
+    async def voter_list(self, button, interaction):
+        # ← add this
+        await interaction.response.defer(ephemeral=True)
+
         options = [discord.SelectOption(label=opt, value=opt, emoji=OPTION_EMOJIS[i])
                    for i,opt in enumerate(self.poll_data['options'])]
         select = discord.ui.Select(placeholder="Choose option", options=options, custom_id="voter_select")
@@ -160,7 +169,10 @@ class SettingsView(discord.ui.View):
         await interaction.response.send_message("Select option to view voters:", view=view, ephemeral=True)
 
     @discord.ui.button(label="End Poll", style=discord.ButtonStyle.secondary)
-    async def end_poll(self, button: discord.ui.Button, interaction: discord.Interaction):
+    async def end_poll(self, button, interaction):
+        # ← add this
+        await interaction.response.defer(ephemeral=True)
+
         self.poll_data['closed'] = True
         # Disable all option buttons
         for item in self.poll_data['view'].children:
@@ -172,7 +184,10 @@ class SettingsView(discord.ui.View):
         await interaction.response.send_message("Poll ended.", ephemeral=True)
 
     @discord.ui.button(label="Export Votes", style=discord.ButtonStyle.primary)
-    async def export_votes(self, button: discord.ui.Button, interaction: discord.Interaction):
+    async def export_votes(self, button, interaction):
+        # ← add this
+        await interaction.response.defer(ephemeral=True)
+
         poll = self.poll_data
 
         # Build CSV in memory
@@ -206,7 +221,10 @@ class SettingsView(discord.ui.View):
         )
 
     @discord.ui.button(label="Delete", style=discord.ButtonStyle.danger)
-    async def delete(self, button: discord.ui.Button, interaction: discord.Interaction):
+    async def delete(self, button, interaction):
+        # ← add this
+        await interaction.response.defer(ephemeral=True)
+
         if interaction.user.id != self.poll_data['author_id']:
             return await interaction.response.send_message("Only creator can delete.", ephemeral=True)
         channel = await self.cog.bot.fetch_channel(interaction.channel_id)
@@ -240,7 +258,7 @@ class PollCog(commands.Cog):
     async def settings_callback(self, interaction: discord.Interaction):
         poll = self.polls.get(interaction.message.id)
         roles = [r.name for r in interaction.user.roles]
-        if not any(r in roles for r in ('Server Owner','Manager','Moderator')):
+        if not any(r in roles for r in ('Server Owner','Manager','Moderator','The BotFather')):
             return await interaction.response.send_message("No permission.", ephemeral=True)
         # Instead of DMing, send the settings view ephemerally in the same channel:
         await interaction.response.send_message(
@@ -324,29 +342,28 @@ class PollCog(commands.Cog):
                 else:
                     header = "❌ Poll closed\n\n"
             desc = header + format_results()
-            embed = discord.Embed(title="📊 "+data['question'], description=desc, color=0xFE407D)
+            embed = discord.Embed(title="📊 "+data['question'], description=desc, color=0x00E5FF)
             embed.set_footer(text=f"Made by {data['author']}")
             return embed
 
         # Callbacks
         async def vote_callback(interaction: discord.Interaction):
-            pid = interaction.message.id
-            poll = self.polls.get(pid)
-            if not poll or poll['closed']:
-                return await interaction.response.send_message("Poll closed.", ephemeral=True)
-
-            uid = interaction.user.id
+            poll = self.polls[interaction.message.id]
+            uid  = interaction.user.id
             choice = interaction.data['custom_id']
 
-            # — your existing single/multiple‑vote logic here —
-            # make sure you update poll['user_votes'], poll['vote_count'], poll['total_votes']
+            prev = poll['user_votes'].get(uid)
+            if prev:
+                poll['vote_count'][prev] -= 1
 
-            # now respond AND update the message in one go:
+            poll['user_votes'][uid] = choice
+            poll['vote_count'][choice] += 1
+
+            # ← add this:
+            poll['total_votes'] = len(poll['user_votes'])
+
             embed = poll['build_embed'](poll)
-            view  = poll['view']
-
-            # Edit the original message
-            await interaction.response.edit_message(embed=embed, view=view)
+            await interaction.response.edit_message(embed=embed, view=poll['view'])
 
         # Assemble view
         view = discord.ui.View(timeout=None)
@@ -365,10 +382,9 @@ class PollCog(commands.Cog):
         view.add_item(settings)
 
         embed = build_embed(poll_data)
-        if mention:
-            await ctx.send(mention_text)
-        msg = await ctx.send(embed=embed, view=view)
-
+        # send a single message containing both custom mention_text and the embed
+        content = poll_data['mention_text'] if poll_data['mention_text'] else None
+        msg = await ctx.send(content=content, embed=embed, view=view)
         poll_data['view'] = view
         poll_data['build_embed'] = build_embed
         poll_data['button_callback'] = vote_callback
@@ -445,10 +461,11 @@ class PollCog(commands.Cog):
         parts.append(question_and_opts)
         args = " ".join(parts)
 
-        # 4) Create a Context and invoke your existing poll command
+        # 4) Instead of delegating, let's craft mention_text and call the core logic
         ctx = await commands.Context.from_interaction(interaction)
-        await self.poll.callback(self, ctx, args=args)
-        # (no additional defer/response needed— your poll command has already sent!)
+        # pass the exact mention string through
+        full_args = f"{mentions or ''} { 'multiple ' if multiple else ''}{args}"
+        await self.poll.callback(self, ctx, args=full_args.strip())        # (no additional defer/response needed— your poll command has already sent!)
 
 async def setup(bot):
     await bot.add_cog(PollCog(bot))
