@@ -152,7 +152,7 @@ class AnnouncementCog(commands.Cog):
                         schedule_cog = self.bot.get_cog("Schedule")
                         schedule = schedule_cog.get_schedule() if schedule_cog else None
                         if schedule is None:
-                            await ctx.send("No schedule has been set. Use `!resetschedule` to set one.")
+                            await ctx.send("No schedule has been set. Use `!!resetschedule` to set one.")
                             return
                         try:
                             time1, time2, time3, time4 = map(datetime.fromisoformat, schedule)
@@ -303,7 +303,7 @@ class AnnouncementCog(commands.Cog):
                     schedule_cog = self.bot.get_cog("Schedule")
                     schedule = schedule_cog.get_schedule() if schedule_cog else None
                     if schedule is None:
-                        await ctx.send("No schedule has been set. Use `!resetschedule` to set one.")
+                        await ctx.send("No schedule has been set. Use `!!resetschedule` to set one.")
                         return
                     try:
                         time1, time2, time3, time4 = map(datetime.fromisoformat, schedule)
@@ -343,7 +343,7 @@ class AnnouncementCog(commands.Cog):
                 return
             schedule = schedule_cog.get_schedule()
             if schedule is None:
-                await ctx.send("No schedule has been set. Use `!resetschedule` to set one.")
+                await ctx.send("No schedule has been set. Use `!!resetschedule` to set one.")
                 return
             try:
                 time1, time2, time3, time4 = map(datetime.fromisoformat, schedule)
