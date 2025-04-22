@@ -256,6 +256,139 @@ class PollCog(commands.Cog):
         self.bot = bot
         self.polls = {}
 
+    async def _create_poll(self, ctx, *, args: str):
+        """
+        Create a poll. Format:
+        !!poll [mention @everyone] [multiple] Question? | Opt1 | Opt2 | ... | MM/DD HH:MM
+        """
+        mention = False
+        mention_text = ''
+        if args.startswith("mention "):
+            mention = True
+            mention_text = '@everyone'
+            args = args[len("mention "):]
+
+        multiple = False
+        if args.startswith("multiple "):
+            multiple = True
+            args = args[len("multiple "):]
+
+        parts = [p.strip() for p in args.split('|')]
+        if len(parts) < 3:
+            return await ctx.send("Provide question, 2+ options, optionally end time.")
+
+        # Detect end time
+        end_time = None
+        if re.match(r"^\d{2}/\d{2} \d{2}:\d{2}$", parts[-1]):
+            try:
+                user_tz_str = await self.get_user_timezone(ctx.author.id)
+                tz = pytz.timezone(user_tz_str)
+                dt = datetime.strptime(parts[-1], "%m/%d %H:%M").replace(year=datetime.now(tz).year)
+                end_time = tz.localize(dt).astimezone(pytz.utc)
+                parts = parts[:-1]
+            except Exception as e:
+                return await ctx.send(f"Error parsing end time: {e}")
+
+        question = parts[0]
+        options = parts[1:]
+        if not 2 <= len(options) <= 10:
+            return await ctx.send("Poll must have between 2 and 10 options.")
+
+        # Initialize poll data
+        poll_data = {
+            'question': question,
+            'options': options.copy(),
+            'vote_count': {opt:0 for opt in options},
+            'total_votes': 0,
+            'user_votes': {},
+            'voting_type': 'multiple' if multiple else 'single',
+            'author': ctx.author.display_name,
+            'author_id': ctx.author.id,
+            'mention': mention,
+            'mention_text': mention_text,
+            'end_time': end_time,
+            'closed': False
+        }
+
+        # Build embed
+        def format_results():
+            txt = ''
+            for i,opt in enumerate(poll_data['options']):
+                cnt = poll_data['vote_count'].get(opt,0)
+                pct = (cnt/poll_data['total_votes']*100) if poll_data['total_votes']>0 else 0
+                filled = int(BAR_LENGTH * pct//100)
+                txt += f"**{OPTION_EMOJIS[i]} {opt}**\n[{'🟩'*filled}{'⬜'*(BAR_LENGTH-filled)}] | {pct:.1f}% ({cnt})\n"
+            return txt
+
+        def build_embed(data):
+            header = ''
+            if data['end_time']:
+                now = datetime.utcnow().replace(tzinfo=pytz.utc)
+                if not data['closed'] and data['end_time']>now:
+                    header = f"⏳ Time remaining: {format_time_delta(data['end_time']-now)}\n\n"
+                else:
+                    header = "❌ Poll closed\n\n"
+            desc = header + format_results()
+            embed = discord.Embed(title=f"📊 {data['question']}", description=desc, color=0x00E5FF)
+            embed.set_footer(text=f"➕ Add Option | ⚙️ Settings | Created by {data['author']}")
+            return embed
+
+        # Callbacks
+        async def vote_callback(interaction: discord.Interaction):
+            poll = self.polls[interaction.message.id]
+            uid = interaction.user.id
+            choice = interaction.data['custom_id']
+
+            # Single‑vote confirmation
+            if poll['voting_type'] == 'single' and uid in poll['user_votes']:
+                # Ask to confirm removal
+                view = ConfirmView()
+                await interaction.response.send_message(
+                    "You already voted. Remove your vote?", view=view, ephemeral=True
+                )
+                await view.wait()
+                if view.value is False:
+                    return  # keep existing vote
+                # else proceed to remove
+                prev = poll['user_votes'].pop(uid)
+                poll['vote_count'][prev] -= 1
+
+            # Register new vote
+            poll['user_votes'][uid] = choice
+            poll['vote_count'][choice] = poll['vote_count'].get(choice, 0) + 1
+            poll['total_votes'] = len(poll['user_votes'])
+
+            embed = poll['build_embed'](poll)
+            await interaction.response.edit_message(embed=embed, view=poll['view'])
+
+        # Assemble view
+        view = discord.ui.View(timeout=None)
+        # Option buttons
+        for i,opt in enumerate(options):
+            btn = discord.ui.Button(label=OPTION_EMOJIS[i], custom_id=opt)
+            btn.callback = vote_callback
+            view.add_item(btn)
+        # Add option
+        plus = discord.ui.Button(label="➕", style=discord.ButtonStyle.secondary, custom_id="add_option")
+        plus.callback = self.add_option_callback
+        view.add_item(plus)
+        # Settings
+        settings = discord.ui.Button(label="⚙️", style=discord.ButtonStyle.secondary, custom_id="settings")
+        settings.callback = self.settings_callback  # PollCog.settings_callback
+        view.add_item(settings)
+
+        embed = build_embed(poll_data)
+        # send a single message containing both custom mention_text and the embed
+        content = poll_data['mention_text'] if poll_data['mention_text'] else None
+        msg = await ctx.send(content=content, embed=embed, view=view)
+        poll_data['view'] = view
+        poll_data['build_embed'] = build_embed
+        poll_data['button_callback'] = vote_callback
+        self.polls[msg.id] = poll_data
+
+        if end_time:
+            self.bot.loop.create_task(self.schedule_poll_end(msg.id))
+
     async def get_user_timezone(self, user_id):
         """Fetch a user's timezone from Postgres (default UTC)."""
         row = await self.bot.pg_pool.fetchrow(
@@ -356,7 +489,8 @@ class PollCog(commands.Cog):
         ctx = await commands.Context.from_interaction(interaction)
         # pass the exact mention string through
         full_args = f"{mentions or ''} { 'multiple ' if multiple else ''}{args}"
-        await self.poll.callback(self, ctx, args=full_args.strip())        # (no additional defer/response needed— your poll command has already sent!)
+        await self._create_poll(ctx, args=full_args.strip())
+        # (no additional defer/response needed— your poll command has already sent!)
 
 async def setup(bot):
     await bot.add_cog(PollCog(bot))
