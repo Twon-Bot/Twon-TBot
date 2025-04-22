@@ -200,8 +200,8 @@ class HelpCog(commands.Cog):
 
         elif topic == 'poll':
             embed = discord.Embed(
-                title="!!poll",
-                description="Create a custom poll with options and reaction buttons.",
+                title="/poll",
+                description="Create a custom poll with options and reaction buttons. Various poll alterations are available through the slash command.",
                 color=0xFFC107
             )
             await send(embed=embed, ephemeral=is_inter)
