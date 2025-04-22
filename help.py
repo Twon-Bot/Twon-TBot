@@ -237,7 +237,7 @@ class HelpCog(commands.Cog):
         elif topic in ['endcycle', 'endc', 'ec']:
             embed = discord.Embed(
                 title="!!endcycle  //  !!endc  //  !!ec",
-                description="Output the `End of Cycle X --- Start of Cycle Y` message in 6 channels.",
+                description="Output the:\n`End of Cycle X`\n`---`\n`Start of Cycle Y`\nmessage in 6 channels.",
                 color=0xFFC107
             )
             await send(embed=embed, ephemeral=is_inter)
@@ -355,8 +355,8 @@ class HelpCog(commands.Cog):
             embed = discord.Embed(
                 title="**Available Announcements:**",
                 description="- " + "\n- ".join(titles) +
-                            "\n\n**Input format:** `!!announce <name>`  //  `!!ann <name>`  //  `!!a <name>`\n" +
-                            "**Test:** `!!testannounce <name>`  //  `!!testann <name>`  //  `!!ta <name>`",
+                            "\n\n**Input format:**\n`!!announce <name>`\n`!!ann <name>`\n`!!a <name>`\n" +
+                            "**Test:**\n`!!testannounce <name>`\n`!!testann <name>`\n`!!ta <name>`",
                 color=0xFFC107
             )
         except Exception as e:
