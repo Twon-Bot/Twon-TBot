@@ -117,7 +117,7 @@ class HelpCog(commands.Cog):
                 color=0xFFC107
             )
             await send(embed=embed, ephemeral=is_inter)
-        # Timezone
+        # Tracking
         elif topic in ['tracking_commands', 'tc', 'tcom', 'tcomm']:
             embed = discord.Embed(
                 title="**Tracking Commands:**",

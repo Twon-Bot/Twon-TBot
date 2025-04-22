@@ -44,7 +44,7 @@ class TrackingCog(commands.Cog):
             return None
 
     # ─── prefix command with sub‑actions ───
-    @commands.command(name="tracking", aliases=["track"])
+    @commands.command(name="tracking", aliases=["track", "t"])
     @commands.has_any_role('The BotFather', 'Moderator', 'Manager', 'Server Owner')
     async def tracking(self, ctx, action: str = None, arg: str = None):
         """  
