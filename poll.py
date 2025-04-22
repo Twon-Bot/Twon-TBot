@@ -47,11 +47,14 @@ class ConfirmView(discord.ui.View):
     @discord.ui.button(label="Confirm", style=discord.ButtonStyle.danger)
     async def confirm(self, button: discord.ui.Button, interaction: discord.Interaction):
         self.value = True
+        # ACK the button click so it doesn’t “fail”
+        await interaction.response.defer(ephemeral=True)
         self.stop()
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
     async def cancel(self, button: discord.ui.Button, interaction: discord.Interaction):
         self.value = False
+        await interaction.response.defer(ephemeral=True)
         self.stop()
 
 
@@ -70,41 +73,40 @@ class AddOptionModal(discord.ui.Modal, title="Add an Option"):
                 return await interaction.response.send_message("That option already exists.", ephemeral=True)
             if len(self.poll_data['options']) >= 10:
                 return await interaction.response.send_message("Maximum number of options reached.", ephemeral=True)
-            # ... (rest of your append/rebuild code) ...
+
+            # ── Append and rebuild ──────────────────
+            self.poll_data['options'].append(option_text)
+            self.poll_data['vote_count'][option_text] = 0
+
+            view = self.poll_data['view']
+            view.clear_items()
+            # Re‑add each option button
+            for i, opt in enumerate(self.poll_data['options']):
+                btn = discord.ui.Button(label=OPTION_EMOJIS[i], custom_id=opt)
+                btn.callback = self.poll_data['button_callback']
+                view.add_item(btn)
+
+            # Add‑option button
+            plus = discord.ui.Button(label="➕", style=discord.ButtonStyle.secondary, custom_id="add_option")
+            plus.callback = self.poll_data['cog'].add_option_callback
+            view.add_item(plus)
+
+            # Settings button (use the cog’s callback, not “self.”)
+            settings = discord.ui.Button(label="⚙️", style=discord.ButtonStyle.secondary, custom_id="settings")
+            settings.callback = self.poll_data['cog'].settings_callback
+            view.add_item(settings)
+
+            # Update the poll message
+            embed = self.poll_data['build_embed'](self.poll_data)
+            await self.poll_message.edit(embed=embed, view=view)
+
+            # ACK the modal submission
+            await interaction.response.send_message(f"Added option: {option_text}", ephemeral=True)
+
         except Exception as e:
-            return await interaction.response.send_message(
-                f"Something went wrong adding the option: {e}",
-                ephemeral=True
+            await interaction.response.send_message(
+                f"Something went wrong adding the option: {e}", ephemeral=True
             )
-        
-        # Append new option and initialize counts
-        self.poll_data["options"].append(option_text)
-        self.poll_data["vote_count"][option_text] = 0
-
-        # Create corresponding button
-        idx = len(self.poll_data["options"]) - 1
-        new_button = discord.ui.Button(label=OPTION_EMOJIS[idx], custom_id=option_text)
-        new_button.callback = self.poll_data["button_callback"]
-        # Rebuild the view so all buttons (including the new one) render immediately
-        view = self.poll_data['view']
-        view.clear_items()
-        # Re-add option buttons
-        for i, opt in enumerate(self.poll_data['options']):
-            btn = discord.ui.Button(label=OPTION_EMOJIS[i], custom_id=opt)
-            btn.callback = self.poll_data['button_callback']
-            view.add_item(btn)
-        # ➕ Add-option button
-        plus = discord.ui.Button(label="➕", style=discord.ButtonStyle.secondary, custom_id="add_option")
-        plus.callback = self.poll_data['cog'].add_option_callback
-        view.add_item(plus)
-        # ⚙️ Settings button
-        settings = discord.ui.Button(label="⚙️", style=discord.ButtonStyle.secondary, custom_id="settings")
-        settings.callback = self.settings_callback  # PollCog.settings_callback
-        view.add_item(settings)
-
-        # Edit the poll message to show new option and buttons
-        embed = self.poll_data['build_embed'](self.poll_data)
-        await self.poll_message.edit(embed=embed, view=view)
 
 class SettingsView(discord.ui.View):
     def __init__(self, cog, poll_data, message_id):
@@ -152,8 +154,8 @@ class SettingsView(discord.ui.View):
             plus.callback = self.cog.add_option_callback
             view.add_item(plus)
             # Settings button
-            settings = discord.ui.Button(label="⚙️", style=discord.ButtonStyle.secondary, custom_id="settings")
-            settings.callback = self.settings_callback  # PollCog.settings_callback
+            settings = discord.ui.Button(..., custom_id="settings")
+            settings.callback = self.poll_data['cog'].settings_callback
             view.add_item(settings)
 
             channel = await self.cog.bot.fetch_channel(inter.channel_id)
@@ -309,6 +311,8 @@ class PollCog(commands.Cog):
             'end_time': end_time,
             'closed': False
         }
+        # Give the modal access back to this cog instance
+        poll_data['cog'] = self
 
         # Build embed
         def format_results():
@@ -329,7 +333,13 @@ class PollCog(commands.Cog):
                 else:
                     header = "❌ Poll closed\n\n"
             desc = header + format_results()
-            embed = discord.Embed(title=f"📊 {data['question']}", description=desc, color=0x00E5FF)
+            
+            embed = discord.Embed(
+                title=f"📊 {data['question']}",
+                description=desc,
+                color=0x00E5FF
+            )
+
             embed.set_footer(text=f"➕ Add Option | ⚙️ Settings | Created by {data['author']}")
             return embed
 
@@ -373,8 +383,8 @@ class PollCog(commands.Cog):
         plus.callback = self.add_option_callback
         view.add_item(plus)
         # Settings
-        settings = discord.ui.Button(label="⚙️", style=discord.ButtonStyle.secondary, custom_id="settings")
-        settings.callback = self.settings_callback  # PollCog.settings_callback
+        settings = discord.ui.Button(..., custom_id="settings")
+        settings.callback = self.poll_data['cog'].settings_callback
         view.add_item(settings)
 
         embed = build_embed(poll_data)
