@@ -125,7 +125,8 @@ class HelpCog(commands.Cog):
                     "- `!!tracking` → Outputs the tracking format and saves it to the .json\n"
                     "- `!!tracking pack X` → Shows pack number X saved in the .json file\n"
                     "- `!!tracking packs` → Displays a list of all currently saved packs in the .json file\n"
-                    "- `!!tracking clear` → Delets/Erases all currently saved tracking outputs from the .json"
+                    "- `!!tracking clear` → Deletes/Erases all currently saved tracking outputs from the .json\n"
+                    "- `!!tracking output` → Output all saved tracking files in numerical order"
                 ),
                 color=0xFFC107
             )
@@ -220,7 +221,8 @@ class HelpCog(commands.Cog):
                     "- `!!tracking` → Outputs the tracking format and saves it to the .json\n"
                     "- `!!tracking pack X` → Shows pack number X saved in the .json file\n"
                     "- `!!tracking packs` → Displays a list of all currently saved packs in the .json file\n"
-                    "- `!!tracking clear` → Delets/Erases all currently saved tracking outputs from the .json"
+                    "- `!!tracking clear` → Deletes/Erases all currently saved tracking outputs from the .json\n"
+                    "- `!!tracking output` → Output all saved tracking files in numerical order"
                 ),
                 color=0xFFC107
             )
