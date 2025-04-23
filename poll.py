@@ -48,10 +48,10 @@ class ConfirmView(discord.ui.View):
 
     @discord.ui.button(label="Confirm", style=discord.ButtonStyle.danger)
     async def confirm(self, button, interaction: discord.Interaction):
-        # 1) ACK the button click immediately
-        await interaction.response.defer_update()
+        # 1) immediately reply (acks the interaction)
+        await interaction.response.send_message("✅ Vote changed.", ephemeral=True)
 
-        # 2) now safely update the poll data + re-render
+        # 2) now update the original poll message
         uid = interaction.user.id
         prev = self.poll_data['user_votes'].pop(uid, None)
         if prev:
@@ -64,16 +64,12 @@ class ConfirmView(discord.ui.View):
         embed = self.poll_data['build_embed'](self.poll_data)
         await self.poll_message.edit(embed=embed, view=self.poll_data['view'])
 
-        # 3) then send your ephemeral follow-up
-        await interaction.followup.send("✅ Vote changed.", ephemeral=True)
         self.stop()
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
     async def cancel(self, button, interaction: discord.Interaction):
-        # 1) ACK immediately
-        await interaction.response.defer_update()
-        # 2) ephemeral follow-up
-        await interaction.followup.send("👍 Keeping your vote.", ephemeral=True)
+        # 1) immediately reply (acks)
+        await interaction.response.send_message("👍 Keeping your vote.", ephemeral=True)
         self.stop()
 
 class AddOptionModal(discord.ui.Modal, title="Add an Option"):
@@ -284,7 +280,9 @@ class PollCog(commands.Cog):
             mention = True
             mention_text = m.group(1)
             args = args[m.end():]
-
+        # Strip any leftover literal word "mention"
+        if args.startswith("mention "):
+            args = args[len("mention ") :]
         # now your existing “multiple” flag logic will apply to the remainder:
 
         multiple = False
