@@ -47,30 +47,30 @@ class ConfirmView(discord.ui.View):
         self.choice = choice
 
     @discord.ui.button(label="Confirm", style=discord.ButtonStyle.danger)
-    async def confirm(self, button, interaction: discord.Interaction):
-        # Remove the old vote
+    async def confirm(self, button, interaction):
+        # 1) ACK the button click so Discord knows we're handling it
+        await interaction.response.defer_update()
+
+        # 2) now safely update the poll
         uid = interaction.user.id
         prev = self.poll_data['user_votes'].pop(uid, None)
         if prev:
             self.poll_data['vote_count'][prev] -= 1
-
-        # Now register the new one
         self.poll_data['user_votes'][uid] = self.choice
         self.poll_data['vote_count'][self.choice] += 1
         self.poll_data['total_votes'] = len(self.poll_data['user_votes'])
-
-        # Re-render the poll embed
         embed = self.poll_data['build_embed'](self.poll_data)
         await self.poll_message.edit(embed=embed, view=self.poll_data['view'])
 
-        await interaction.response.send_message("✅ Vote changed.", ephemeral=True)
+        # 3) send your ephemeral confirmation
+        await interaction.followup.send("✅ Vote changed.", ephemeral=True)
         self.stop()
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
-    async def cancel(self, button, interaction: discord.Interaction):
-        await interaction.response.send_message("👍 Keeping your vote.", ephemeral=True)
+    async def cancel(self, button, interaction):
+        await interaction.response.defer_update()
+        await interaction.followup.send("👍 Keeping your vote.", ephemeral=True)
         self.stop()
-
 
 class AddOptionModal(discord.ui.Modal, title="Add an Option"):
     new_option = discord.ui.TextInput(label="New Option", placeholder="Enter your new poll option here", max_length=100)
@@ -396,7 +396,11 @@ class PollCog(commands.Cog):
         embed = build_embed(poll_data)
         # send a single message containing both custom mention_text and the embed
         content = poll_data['mention_text'] if poll_data['mention_text'] else None
-        msg = await ctx.send(content=content, embed=embed, view=view)
+        
+        # Trying to add 'mention' with ping into poll from old code
+        allowed = discord.AllowedMentions(roles=True, everyone=True)
+        msg = await ctx.send(content=content, embed=embed, view=view, allowed_mentions=allowed)
+
         poll_data['view'] = view
         poll_data['build_embed'] = build_embed
         poll_data['button_callback'] = vote_callback
