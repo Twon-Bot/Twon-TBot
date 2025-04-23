@@ -267,42 +267,59 @@ class PollCog(commands.Cog):
 
         # create view
         view=discord.ui.View(timeout=None)
-        async def vote_cb(inter, _):
-            pd=self.polls[inter.message.id]
-            uid=inter.user.id; choice=inter.data['custom_id']
-            # single?
-            if not pd['multiple'] and uid in pd['user_votes'] and pd['user_votes'][uid]!=choice:
-                # confirm change
-                return await inter.response.send_message("You already voted—remove old vote?", view=ConfirmView(pd, inter.message, choice), ephemeral=True)
-            # toggle if multiple
-            if pd['multiple'] and uid in pd['user_votes'] and choice in pd['user_votes'][uid]:
-                # remove
-                pd['user_votes'][uid].remove(choice)
-                pd['vote_count'][choice]-=1
-            else:
-                # add
-                if pd['multiple']:
-                    pd['user_votes'].setdefault(uid,[]).append(choice)
+        async def vote_cb(interaction: discord.Interaction):
+            pd = self.polls[interaction.message.id]
+            uid = interaction.user.id
+            choice = interaction.data['custom_id']
+
+            # Single-vote confirmation
+            if not pd['multiple'] and uid in pd['user_votes'] and pd['user_votes'][uid] != choice:
+                return await interaction.response.send_message(
+                    "You already voted—remove old vote?",
+                    view=ConfirmView(pd, interaction.message, choice),
+                    ephemeral=True
+                )
+
+            # Multiple-vote toggle or single-vote register
+            if pd['multiple']:
+                user_list = pd['user_votes'].setdefault(uid, [])
+                if choice in user_list:
+                    user_list.remove(choice)
+                    pd['vote_count'][choice] -= 1
                 else:
-                    pd['user_votes'][uid]=choice
-                pd['vote_count'][choice]+=1
-            pd['total_votes']= len(pd['user_votes'])
-            await inter.response.edit_message(embed=pd['build'](pd), view=pd['view'])
+                    user_list.append(choice)
+                    pd['vote_count'][choice] += 1
+            else:
+                # either first vote or re-voted same choice
+                pd['user_votes'][uid] = choice
+                pd['vote_count'][choice] += 1
+
+            pd['total_votes'] = len(pd['user_votes'])
+            await interaction.response.edit_message(embed=pd['build'](pd), view=pd['view'])
 
         # add buttons
         for i,o in enumerate(opts):
             b=discord.ui.Button(label=OPTION_EMOJIS[i], custom_id=o)
             b.callback=vote_cb
             view.add_item(b)
-        addb=discord.ui.Button(label="➕", style=discord.ButtonStyle.secondary, custom_id="add_option")
-        addb.callback=lambda i,btn: i.response.send_modal(AddOptionModal(poll_data,i.message))
+        addb = discord.ui.Button(label="➕", style=discord.ButtonStyle.secondary, custom_id="add_option")
+        async def add_cb(interaction: discord.Interaction):
+            await interaction.response.send_modal(AddOptionModal(poll_data, interaction.message))
+        addb.callback = add_cb
         view.add_item(addb)
-        setb=discord.ui.Button(label="⚙️", style=discord.ButtonStyle.secondary, custom_id="settings")
-        setb.callback=lambda i,btn: i.response.send_message("Poll Settings:", view=SettingsView(self,poll_data,i.message), ephemeral=True)
+        setb = discord.ui.Button(label="⚙️", style=discord.ButtonStyle.secondary, custom_id="settings")
+        async def settings_cb(interaction: discord.Interaction):
+            await interaction.response.send_message(
+                "Poll Settings:",
+                view=SettingsView(self, poll_data, interaction.message),
+                ephemeral=True
+            )
+        setb.callback = settings_cb
         view.add_item(setb)
 
         msg=await interaction.followup.send(content=poll_data['mention'], embed=build(poll_data), view=view)
         poll_data['view']=view
+        poll_data['channel_id'] = msg.channel.id
         poll_data['vote_cb']=vote_cb
         self.polls[msg.id]=poll_data
 
@@ -320,7 +337,7 @@ class PollCog(commands.Cog):
         for i in pd['view'].children:
             if i.custom_id not in ("settings",):
                 i.disabled=True
-        ch=await self.bot.fetch_channel(pd['view']._timeout)  # stored channel id
+        ch = self.bot.get_channel(pd['channel_id'])
         msg=await ch.fetch_message(msg_id)
         await msg.edit(embed=pd['build'](pd), view=pd['view'])
 
