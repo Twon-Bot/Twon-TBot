@@ -48,13 +48,13 @@ class ConfirmView(discord.ui.View):
     async def confirm(self, button, interaction):
         self.value = True
         # tell Discord “I updated the view” so it won’t error
-        await interaction.response.defer_update()
+        await interaction.response.defer(ephemeral=True)
         self.stop()
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
     async def cancel(self, button, interaction):
         self.value = False
-        await interaction.response.defer_update()
+        await interaction.response.defer(ephemeral=True)
         self.stop()
 
 
@@ -122,7 +122,7 @@ class SettingsView(discord.ui.View):
     @discord.ui.button(label="Edit", style=discord.ButtonStyle.secondary)
     async def edit(self, button, interaction):
         # ← add this
-        await interaction.response.defer(ephemeral=True)
+        #await interaction.response.defer(ephemeral=True)
 
         # Collect inputs: question, mentions, each option
         modal = discord.ui.Modal(title="Edit Poll")
@@ -173,7 +173,7 @@ class SettingsView(discord.ui.View):
     @discord.ui.button(label="Voter List", style=discord.ButtonStyle.secondary)
     async def voter_list(self, button, interaction):
         # ← add this
-        await interaction.response.defer(ephemeral=True)
+        #await interaction.response.defer(ephemeral=True)
 
         options = [discord.SelectOption(label=opt, value=opt, emoji=OPTION_EMOJIS[i])
                    for i,opt in enumerate(self.poll_data['options'])]
@@ -194,7 +194,7 @@ class SettingsView(discord.ui.View):
     @discord.ui.button(label="End Poll", style=discord.ButtonStyle.secondary)
     async def end_poll(self, button, interaction):
         # ← add this
-        await interaction.response.defer(ephemeral=True)
+        #await interaction.response.defer(ephemeral=True)
 
         self.poll_data['closed'] = True
         # Disable all option buttons
@@ -209,7 +209,7 @@ class SettingsView(discord.ui.View):
     @discord.ui.button(label="Export Votes", style=discord.ButtonStyle.primary)
     async def export_votes(self, button, interaction):
         # ← add this
-        await interaction.response.defer(ephemeral=True)
+        #await interaction.response.defer(ephemeral=True)
 
         poll = self.poll_data
 
@@ -246,7 +246,7 @@ class SettingsView(discord.ui.View):
     @discord.ui.button(label="Delete", style=discord.ButtonStyle.danger)
     async def delete(self, button, interaction):
         # ← add this
-        await interaction.response.defer(ephemeral=True)
+        #await interaction.response.defer(ephemeral=True)
 
         if interaction.user.id != self.poll_data['author_id']:
             return await interaction.response.send_message("Only creator can delete.", ephemeral=True)
