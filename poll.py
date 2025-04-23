@@ -383,7 +383,11 @@ class PollCog(commands.Cog):
         plus.callback = self.add_option_callback
         view.add_item(plus)
         # Settings
-        settings = discord.ui.Button(..., custom_id="settings")
+        settings = discord.ui.Button(
+            label="⚙️",
+            style=discord.ButtonStyle.secondary,
+            custom_id="settings"
+        )
         settings.callback = self.poll_data['cog'].settings_callback
         view.add_item(settings)
 
@@ -497,9 +501,14 @@ class PollCog(commands.Cog):
 
         # 4) Instead of delegating, let's craft mention_text and call the core logic
         ctx = await commands.Context.from_interaction(interaction)
-        # pass the exact mention string through
         full_args = f"{mentions or ''} { 'multiple ' if multiple else ''}{args}"
-        await self._create_poll(ctx, args=full_args.strip())
+        try:
+            await self._create_poll(ctx, args=full_args.strip())
+        except Exception as e:
+            # send the exception so you can debug
+            await interaction.followup.send(f"🚨 Poll creation error: {e}", ephemeral=True)
+            # re-raise if you want it in your logs
+            raise
         # (no additional defer/response needed— your poll command has already sent!)
 
 async def setup(bot):
