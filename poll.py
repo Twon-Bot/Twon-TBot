@@ -92,8 +92,13 @@ class AddOptionModal(discord.ui.Modal, title="Add an Option"):
             view.add_item(plus)
 
             # Settings button (use the cog’s callback, not “self.”)
-            settings = discord.ui.Button(label="⚙️", style=discord.ButtonStyle.secondary, custom_id="settings")
-            settings.callback = self.poll_data['cog'].settings_callback
+            settings = discord.ui.Button(
+                label="⚙️",
+                style=discord.ButtonStyle.secondary,
+                custom_id="settings"
+            )
+            # wire it to the Cog’s settings_callback
+            settings.callback = self.settings_callback
             view.add_item(settings)
 
             # Update the poll message
