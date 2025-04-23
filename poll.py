@@ -149,7 +149,7 @@ class SettingsView(discord.ui.View):
         modal.on_submit = on_submit
         await interaction.response.send_modal(modal)
 
-    @discord.ui.button(label="Voter List", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="Voters", style=discord.ButtonStyle.secondary)
     async def voter_list(self, button, interaction):
         await interaction.response.defer(ephemeral=True)
 
@@ -171,17 +171,32 @@ class SettingsView(discord.ui.View):
 
     @discord.ui.button(label="End Poll", style=discord.ButtonStyle.secondary)
     async def end_poll(self, button, interaction):
-        await interaction.response.defer(ephemeral=True)
+        # instead of ending immediately, ask for confirmation
+        confirm_view = discord.ui.View(timeout=30)
+        # red confirm button
+        @discord.ui.button(label="Confirm End Poll", style=discord.ButtonStyle.danger)
+        async def confirm_end(button, inter: discord.Interaction):
+            # actually end
+            self.poll_data['closed'] = True
+            for item in list(self.poll_data['view'].children):
+                if item.custom_id != 'settings':
+                    self.poll_data['view'].remove_item(item)
+            channel = await self.cog.bot.fetch_channel(inter.channel_id)
+            msg = await channel.fetch_message(self.message_id)
+            await msg.edit(embed=self.poll_data['build_embed'](self.poll_data), view=self.poll_data['view'])
+            await inter.response.edit_message(content="Poll ended.", view=None, ephemeral=True)
+            confirm_view.stop()
 
-        self.poll_data['closed'] = True
-        # Disable all option buttons
-        for item in self.poll_data['view'].children:
-            if item.custom_id not in ('settings','add_option'):
-                item.disabled = True
-        channel = await self.cog.bot.fetch_channel(interaction.channel_id)
-        msg = await channel.fetch_message(self.message_id)
-        await msg.edit(embed=self.poll_data['build_embed'](self.poll_data), view=self.poll_data['view'])
-        await interaction.response.send_message("Poll ended.", ephemeral=True)
+        # cancel button
+        @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
+        async def cancel_end(button, inter: discord.Interaction):
+            await inter.response.edit_message(content="Cancelled.", view=None, ephemeral=True)
+            confirm_view.stop()
+
+        # add these two buttons to the view
+        confirm_view.add_item(confirm_end)
+        confirm_view.add_item(cancel_end)
+        await interaction.response.send_message("Are you sure you want to end the poll?", view=confirm_view, ephemeral=True)
 
     @discord.ui.button(label="Export Votes", style=discord.ButtonStyle.primary)
     async def export_votes(self, button, interaction):
@@ -321,9 +336,9 @@ class PollCog(commands.Cog):
             desc = header + format_results()
             # ─── tell them single vs multiple ────────────────────────────
             if data['voting_type'] == 'single':
-                desc += "\n*You may select only one option in this poll.*\n"
+                desc += "\n*You may select **only one option** in this poll.*\n"
             else:
-                desc += "\n*You may select multiple options in this poll.*\n"
+                desc += "\n*You may select **multiple options** in this poll.*\n"
             
             embed = discord.Embed(
                 title=f"📊 {data['question']}",
@@ -354,14 +369,15 @@ class PollCog(commands.Cog):
                 poll['total_votes'] = 1
 
                 # disable all option buttons now that vote is locked
-                for item in poll['view'].children:
-                    if item.custom_id not in ('settings','add_option'):
-                        item.disabled = True
-
-                # update the embed + view
-                embed = poll['build_embed'](poll)
-                await interaction.response.edit_message(embed=embed, view=poll['view'])
-                return
+                # remove all option-buttons and “add option” once poll is over,
+                # leave only the Settings button
+                for item in list(poll['view'].children):
+                    if item.custom_id != 'settings':
+                        poll['view'].remove_item(item)
+                        # update the embed + view
+                        embed = poll['build_embed'](poll)
+                        await interaction.response.edit_message(embed=embed, view=poll['view'])
+                        return
 
             # ─── multiple-vote mode ─────────────────────────────────────
             # ensure we have a list to track this user’s votes
