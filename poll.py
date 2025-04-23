@@ -47,28 +47,32 @@ class ConfirmView(discord.ui.View):
         self.choice = choice
 
     @discord.ui.button(label="Confirm", style=discord.ButtonStyle.danger)
-    async def confirm(self, button, interaction):
-        # 1) ACK the button click so Discord knows we're handling it
+    async def confirm(self, button, interaction: discord.Interaction):
+        # 1) ACK the button click immediately
         await interaction.response.defer_update()
 
-        # 2) now safely update the poll
+        # 2) now safely update the poll data + re-render
         uid = interaction.user.id
         prev = self.poll_data['user_votes'].pop(uid, None)
         if prev:
             self.poll_data['vote_count'][prev] -= 1
+
         self.poll_data['user_votes'][uid] = self.choice
         self.poll_data['vote_count'][self.choice] += 1
         self.poll_data['total_votes'] = len(self.poll_data['user_votes'])
+
         embed = self.poll_data['build_embed'](self.poll_data)
         await self.poll_message.edit(embed=embed, view=self.poll_data['view'])
 
-        # 3) send your ephemeral confirmation
+        # 3) then send your ephemeral follow-up
         await interaction.followup.send("✅ Vote changed.", ephemeral=True)
         self.stop()
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
-    async def cancel(self, button, interaction):
+    async def cancel(self, button, interaction: discord.Interaction):
+        # 1) ACK immediately
         await interaction.response.defer_update()
+        # 2) ephemeral follow-up
         await interaction.followup.send("👍 Keeping your vote.", ephemeral=True)
         self.stop()
 
@@ -271,12 +275,17 @@ class PollCog(commands.Cog):
         Create a poll. Format:
         !!poll [mention @everyone] [multiple] Question? | Opt1 | Opt2 | ... | MM/DD HH:MM
         """
+        # ——— handle a real role‐mention or @everyone at the front ———
         mention = False
         mention_text = ''
-        if args.startswith("mention "):
+        # if it begins with a role‐mention like <@&123…> or @everyone
+        m = re.match(r'^(<@&\d+>|@everyone)\s+', args)
+        if m:
             mention = True
-            mention_text = '@everyone'
-            args = args[len("mention "):]
+            mention_text = m.group(1)
+            args = args[m.end():]
+
+        # now your existing “multiple” flag logic will apply to the remainder:
 
         multiple = False
         if args.startswith("multiple "):
@@ -399,7 +408,11 @@ class PollCog(commands.Cog):
         
         # Trying to add 'mention' with ping into poll from old code
         allowed = discord.AllowedMentions(roles=True, everyone=True)
-        msg = await ctx.send(content=content, embed=embed, view=view, allowed_mentions=allowed)
+        msg = await ctx.send(
+            content=poll_data['mention_text'], 
+            embed=embed, 
+            view=view, 
+            allowed_mentions=allowed)
 
         poll_data['view'] = view
         poll_data['build_embed'] = build_embed
