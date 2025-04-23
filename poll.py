@@ -38,40 +38,6 @@ def format_time_delta(delta: timedelta):
         parts.append(f"{minutes} minute{'s' if minutes != 1 else ''}")
     return " ".join(parts)
 
-
-class ConfirmView(discord.ui.View):
-    def __init__(self, poll_data, poll_message, choice, timeout: float = 30):
-        super().__init__(timeout=timeout)
-        self.poll_data = poll_data
-        self.poll_message = poll_message
-        self.choice = choice
-
-    @discord.ui.button(label="Confirm", style=discord.ButtonStyle.danger)
-    async def confirm(self, button, interaction: discord.Interaction):
-        # 1) immediately reply (acks the interaction)
-        await interaction.response.send_message("✅ Vote changed.", ephemeral=True)
-
-        # 2) now update the original poll message
-        uid = interaction.user.id
-        prev = self.poll_data['user_votes'].pop(uid, None)
-        if prev:
-            self.poll_data['vote_count'][prev] -= 1
-
-        self.poll_data['user_votes'][uid] = self.choice
-        self.poll_data['vote_count'][self.choice] += 1
-        self.poll_data['total_votes'] = len(self.poll_data['user_votes'])
-
-        embed = self.poll_data['build_embed'](self.poll_data)
-        await self.poll_message.edit(embed=embed, view=self.poll_data['view'])
-
-        self.stop()
-
-    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
-    async def cancel(self, button, interaction: discord.Interaction):
-        # 1) immediately reply (acks)
-        await interaction.response.send_message("👍 Keeping your vote.", ephemeral=True)
-        self.stop()
-
 class AddOptionModal(discord.ui.Modal, title="Add an Option"):
     new_option = discord.ui.TextInput(label="New Option", placeholder="Enter your new poll option here", max_length=100)
 
@@ -364,17 +330,44 @@ class PollCog(commands.Cog):
             uid = interaction.user.id
             choice = interaction.data['custom_id']
 
-            # Single‑vote confirmation
-            if poll['voting_type'] == 'single' and uid in poll['user_votes']:
-                # launch ConfirmView which will handle removal+re-render
-                view = ConfirmView(poll, interaction.message, choice)
-                return await interaction.response.send_message(
-                    "You already voted. Remove your vote?", view=view, ephemeral=True
-                )
-            # Register new vote
-            poll['user_votes'][uid] = choice
-            poll['vote_count'][choice] = poll['vote_count'].get(choice, 0) + 1
-            poll['total_votes'] = len(poll['user_votes'])
+            # ─── single-vote mode ───────────────────────────────────────
+            if poll['voting_type'] == 'single':
+                # register (or change) their one vote
+                prev = poll['user_votes'].get(uid)
+                if prev:
+                    # remove old count
+                    poll['vote_count'][prev] -= 1
+
+                poll['user_votes'][uid] = choice
+                poll['vote_count'][choice] = poll['vote_count'].get(choice, 0) + 1
+                # exactly one vote total
+                poll['total_votes'] = 1
+
+                # disable all option buttons now that vote is locked
+                for item in poll['view'].children:
+                    if item.custom_id not in ('settings','add_option'):
+                        item.disabled = True
+
+                # update the embed + view
+                embed = poll['build_embed'](poll)
+                await interaction.response.edit_message(embed=embed, view=poll['view'])
+                return
+
+            # ─── multiple-vote mode ─────────────────────────────────────
+            # ensure we have a list to track this user’s votes
+            user_list = poll['user_votes'].setdefault(uid, [])
+
+            if choice in user_list:
+                # toggle off
+                user_list.remove(choice)
+                poll['vote_count'][choice] -= 1
+            else:
+                # toggle on
+                user_list.append(choice)
+                poll['vote_count'][choice] = poll['vote_count'].get(choice, 0) + 1
+
+            # recompute total votes as sum of all counts for correct percentages
+            poll['total_votes'] = sum(poll['vote_count'].values())
 
             embed = poll['build_embed'](poll)
             await interaction.response.edit_message(embed=embed, view=poll['view'])
