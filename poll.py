@@ -393,7 +393,8 @@ class PollCog(commands.Cog):
             style=discord.ButtonStyle.secondary,
             custom_id="settings"
         )
-        settings.callback = self.poll_data['cog'].settings_callback
+        # wire directly to the Cog’s settings_callback
+        settings.callback = self.settings_callback
         view.add_item(settings)
 
         embed = build_embed(poll_data)
