@@ -40,21 +40,35 @@ def format_time_delta(delta: timedelta):
 
 
 class ConfirmView(discord.ui.View):
-    def __init__(self, timeout: float = 30):
+    def __init__(self, poll_data, poll_message, choice, timeout: float = 30):
         super().__init__(timeout=timeout)
-        self.value = None
+        self.poll_data = poll_data
+        self.poll_message = poll_message
+        self.choice = choice
 
     @discord.ui.button(label="Confirm", style=discord.ButtonStyle.danger)
-    async def confirm(self, button, interaction):
-        self.value = True
-        # tell Discord “I updated the view” so it won’t error
-        await interaction.response.defer(ephemeral=True)
+    async def confirm(self, button, interaction: discord.Interaction):
+        # Remove the old vote
+        uid = interaction.user.id
+        prev = self.poll_data['user_votes'].pop(uid, None)
+        if prev:
+            self.poll_data['vote_count'][prev] -= 1
+
+        # Now register the new one
+        self.poll_data['user_votes'][uid] = self.choice
+        self.poll_data['vote_count'][self.choice] += 1
+        self.poll_data['total_votes'] = len(self.poll_data['user_votes'])
+
+        # Re-render the poll embed
+        embed = self.poll_data['build_embed'](self.poll_data)
+        await self.poll_message.edit(embed=embed, view=self.poll_data['view'])
+
+        await interaction.response.send_message("✅ Vote changed.", ephemeral=True)
         self.stop()
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
-    async def cancel(self, button, interaction):
-        self.value = False
-        await interaction.response.defer(ephemeral=True)
+    async def cancel(self, button, interaction: discord.Interaction):
+        await interaction.response.send_message("👍 Keeping your vote.", ephemeral=True)
         self.stop()
 
 
@@ -121,8 +135,6 @@ class SettingsView(discord.ui.View):
 
     @discord.ui.button(label="Edit", style=discord.ButtonStyle.secondary)
     async def edit(self, button, interaction):
-        # ← add this
-        #await interaction.response.defer(ephemeral=True)
 
         # Collect inputs: question, mentions, each option
         modal = discord.ui.Modal(title="Edit Poll")
@@ -172,8 +184,6 @@ class SettingsView(discord.ui.View):
 
     @discord.ui.button(label="Voter List", style=discord.ButtonStyle.secondary)
     async def voter_list(self, button, interaction):
-        # ← add this
-        #await interaction.response.defer(ephemeral=True)
 
         options = [discord.SelectOption(label=opt, value=opt, emoji=OPTION_EMOJIS[i])
                    for i,opt in enumerate(self.poll_data['options'])]
@@ -193,8 +203,6 @@ class SettingsView(discord.ui.View):
 
     @discord.ui.button(label="End Poll", style=discord.ButtonStyle.secondary)
     async def end_poll(self, button, interaction):
-        # ← add this
-        #await interaction.response.defer(ephemeral=True)
 
         self.poll_data['closed'] = True
         # Disable all option buttons
@@ -208,8 +216,6 @@ class SettingsView(discord.ui.View):
 
     @discord.ui.button(label="Export Votes", style=discord.ButtonStyle.primary)
     async def export_votes(self, button, interaction):
-        # ← add this
-        #await interaction.response.defer(ephemeral=True)
 
         poll = self.poll_data
 
@@ -245,8 +251,6 @@ class SettingsView(discord.ui.View):
 
     @discord.ui.button(label="Delete", style=discord.ButtonStyle.danger)
     async def delete(self, button, interaction):
-        # ← add this
-        #await interaction.response.defer(ephemeral=True)
 
         if interaction.user.id != self.poll_data['author_id']:
             return await interaction.response.send_message("Only creator can delete.", ephemeral=True)
@@ -325,7 +329,7 @@ class PollCog(commands.Cog):
                 cnt = poll_data['vote_count'].get(opt,0)
                 pct = (cnt/poll_data['total_votes']*100) if poll_data['total_votes']>0 else 0
                 filled = int(BAR_LENGTH * pct//100)
-                txt += f"**{OPTION_EMOJIS[i]} {opt}**\n[{'🟩'*filled}{'⬜'*(BAR_LENGTH-filled)}] | {pct:.1f}% ({cnt})\n"
+                txt += f"{OPTION_EMOJIS[i]} {opt}\n[{'🟩'*filled}{'⬜'*(BAR_LENGTH-filled)}] | {pct:.1f}% ({cnt})\n"
             return txt
 
         def build_embed(data):
@@ -341,7 +345,7 @@ class PollCog(commands.Cog):
             embed = discord.Embed(
                 title=f"📊 {data['question']}",
                 description=desc,
-                color=0x00E5FF
+                color=0x39FF14
             )
 
             embed.set_footer(text=f"➕ Add Option | ⚙️ Settings | Created by {data['author']}")
@@ -355,18 +359,11 @@ class PollCog(commands.Cog):
 
             # Single‑vote confirmation
             if poll['voting_type'] == 'single' and uid in poll['user_votes']:
-                # Ask to confirm removal
-                view = ConfirmView()
-                await interaction.response.send_message(
+                # launch ConfirmView which will handle removal+re-render
+                view = ConfirmView(poll, interaction.message, choice)
+                return await interaction.response.send_message(
                     "You already voted. Remove your vote?", view=view, ephemeral=True
                 )
-                await view.wait()
-                if view.value is False:
-                    return  # keep existing vote
-                # else proceed to remove
-                prev = poll['user_votes'].pop(uid)
-                poll['vote_count'][prev] -= 1
-
             # Register new vote
             poll['user_votes'][uid] = choice
             poll['vote_count'][choice] = poll['vote_count'].get(choice, 0) + 1
