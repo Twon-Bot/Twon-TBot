@@ -1,345 +1,518 @@
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 from discord import app_commands
-import csv, io, asyncio, re
+import csv
+import io
+import asyncio
 from datetime import datetime, timedelta
 import pytz
+import re  # for regex matching
 
-# Numeric keycap emojis 1–10
+# Use numeric keycap emojis for consistent display across platforms
 OPTION_EMOJIS = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"]
+# Shorten bar length to avoid wrapping on mobile
 BAR_LENGTH = 8
-NEON_GREEN = 0x39FF14
+
+
+def get_user_timezone(user_id):
+    """Helper: Look up user timezone in bot_data.db; default to UTC if not set."""
+    import sqlite3
+    with sqlite3.connect("bot_data.db") as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT timezone FROM user_timezones WHERE user_id = ?", (user_id,))
+        result = cursor.fetchone()
+        return result[0] if result else "UTC"
+
 
 def format_time_delta(delta: timedelta):
-    secs = int(delta.total_seconds())
-    if secs < 0:
+    """Helper: Return a human-friendly string for a timedelta."""
+    total_seconds = int(delta.total_seconds())
+    if total_seconds <= 0:
         return "0 minutes"
-    h, r = divmod(secs, 3600)
-    m, _ = divmod(r, 60)
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, _ = divmod(remainder, 60)
     parts = []
-    if h: parts.append(f"{h} hour{'s' if h!=1 else ''}")
-    if m: parts.append(f"{m} minute{'s' if m!=1 else ''}")
+    if hours > 0:
+        parts.append(f"{hours} hour{'s' if hours != 1 else ''}")
+    if minutes > 0:
+        parts.append(f"{minutes} minute{'s' if minutes != 1 else ''}")
     return " ".join(parts)
 
+
 class ConfirmView(discord.ui.View):
-    def __init__(self, poll_data, message, new_choice):
-        super().__init__(timeout=30)
+    def __init__(self, poll_data, poll_message, choice, timeout: float = 30):
+        super().__init__(timeout=timeout)
         self.poll_data = poll_data
-        self.message = message
-        self.new_choice = new_choice
+        self.poll_message = poll_message
+        self.choice = choice
 
     @discord.ui.button(label="Confirm", style=discord.ButtonStyle.danger)
-    async def confirm(self, button, interaction):
+    async def confirm(self, button, interaction: discord.Interaction):
+        # Remove the old vote
         uid = interaction.user.id
-        # remove old vote
-        old = self.poll_data['user_votes'].pop(uid, None)
-        if old:
-            self.poll_data['vote_count'][old] -= 1
-        # add new vote
-        self.poll_data['user_votes'][uid] = self.new_choice
-        self.poll_data['vote_count'][self.new_choice] += 1
+        prev = self.poll_data['user_votes'].pop(uid, None)
+        if prev:
+            self.poll_data['vote_count'][prev] -= 1
+
+        # Now register the new one
+        self.poll_data['user_votes'][uid] = self.choice
+        self.poll_data['vote_count'][self.choice] += 1
         self.poll_data['total_votes'] = len(self.poll_data['user_votes'])
-        # re-render
-        embed = self.poll_data['build'](self.poll_data)
-        await self.message.edit(embed=embed, view=self.poll_data['view'])
-        await interaction.response.send_message("✅ Your vote was changed.", ephemeral=True)
+
+        # Re-render the poll embed
+        embed = self.poll_data['build_embed'](self.poll_data)
+        await self.poll_message.edit(embed=embed, view=self.poll_data['view'])
+
+        await interaction.response.send_message("✅ Vote changed.", ephemeral=True)
         self.stop()
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
-    async def cancel(self, button, interaction):
-        await interaction.response.send_message("👍 Your vote remains.", ephemeral=True)
+    async def cancel(self, button, interaction: discord.Interaction):
+        await interaction.response.send_message("👍 Keeping your vote.", ephemeral=True)
         self.stop()
 
-class AddOptionModal(discord.ui.Modal, title="Add Poll Option"):
-    new_option = discord.ui.TextInput(label="Option text", max_length=100)
-    def __init__(self, poll_data, message):
+
+class AddOptionModal(discord.ui.Modal, title="Add an Option"):
+    new_option = discord.ui.TextInput(label="New Option", placeholder="Enter your new poll option here", max_length=100)
+
+    def __init__(self, poll_data, poll_message):
         super().__init__()
         self.poll_data = poll_data
-        self.message = message
+        self.poll_message = poll_message
 
-    async def on_submit(self, interaction):
-        opt = self.new_option.value.strip()
-        if not opt:
-            return await interaction.response.send_message("Cannot add empty option.", ephemeral=True)
-        if opt in self.poll_data['options']:
-            return await interaction.response.send_message("Option already exists.", ephemeral=True)
-        if len(self.poll_data['options'])>=10:
-            return await interaction.response.send_message("Max 10 options.", ephemeral=True)
-        # append
-        self.poll_data['options'].append(opt)
-        self.poll_data['vote_count'][opt] = 0
-        # rebuild view
-        view = self.poll_data['view']
-        view.clear_items()
-        for i,o in enumerate(self.poll_data['options']):
-            btn = discord.ui.Button(label=OPTION_EMOJIS[i], custom_id=o)
-            btn.callback = self.poll_data['vote_cb']
-            view.add_item(btn)
-        # add and settings
-        plus = discord.ui.Button(label="➕", style=discord.ButtonStyle.secondary, custom_id="add_option")
-        plus.callback = self.poll_data['cog'].add_option
-        view.add_item(plus)
-        settings = discord.ui.Button(label="⚙️", style=discord.ButtonStyle.secondary, custom_id="settings")
-        settings.callback = self.poll_data['cog'].open_settings
-        view.add_item(settings)
-        # update
-        embed = self.poll_data['build'](self.poll_data)
-        await self.message.edit(embed=embed, view=view)
-        await interaction.response.send_message(f"Added option **{opt}**.", ephemeral=True)
+    async def on_submit(self, interaction: discord.Interaction):
+        option_text = self.new_option.value.strip()
+        try:
+            if option_text in self.poll_data['options']:
+                return await interaction.response.send_message("That option already exists.", ephemeral=True)
+            if len(self.poll_data['options']) >= 10:
+                return await interaction.response.send_message("Maximum number of options reached.", ephemeral=True)
+
+            # ── Append and rebuild ──────────────────
+            self.poll_data['options'].append(option_text)
+            self.poll_data['vote_count'][option_text] = 0
+
+            view = self.poll_data['view']
+            view.clear_items()
+            # Re‑add each option button
+            for i, opt in enumerate(self.poll_data['options']):
+                btn = discord.ui.Button(label=OPTION_EMOJIS[i], custom_id=opt)
+                btn.callback = self.poll_data['button_callback']
+                view.add_item(btn)
+
+            # Add‑option button
+            plus = discord.ui.Button(label="➕", style=discord.ButtonStyle.secondary, custom_id="add_option")
+            plus.callback = self.poll_data['cog'].add_option_callback
+            view.add_item(plus)
+
+            # Settings button (use the cog’s callback stored on poll_data)
+            settings = discord.ui.Button(
+                label="⚙️",
+                style=discord.ButtonStyle.secondary,
+                custom_id="settings"
+            )
+            settings.callback = self.poll_data['cog'].settings_callback
+            view.add_item(settings)
+
+            # Update the poll message
+            embed = self.poll_data['build_embed'](self.poll_data)
+            await self.poll_message.edit(embed=embed, view=view)
+
+            # ACK the modal submission
+            await interaction.response.send_message(f"Added option: {option_text}", ephemeral=True)
+
+        except Exception as e:
+            await interaction.response.send_message(
+                f"Something went wrong adding the option: {e}", ephemeral=True
+            )
 
 class SettingsView(discord.ui.View):
-    def __init__(self, cog, poll_data, message):
+    def __init__(self, cog, poll_data, message_id):
         super().__init__(timeout=None)
         self.cog = cog
         self.poll_data = poll_data
-        self.message = message
+        self.message_id = message_id
 
-    @discord.ui.select(
-        placeholder="Choose action…",
-        options=[
-            discord.SelectOption(label="Edit spelling", value="edit"),
-            discord.SelectOption(label="Change end time", value="time"),
-            discord.SelectOption(label="Remove voting option", value="remove")
-        ]
-    )
-    async def select_action(self, select, interaction):
-        choice = select.values[0]
-        await interaction.response.defer(ephemeral=True)
-        await interaction.followup.send(f"You chose **{select.placeholder}**.", ephemeral=True)
-        if choice=="edit":
-            # prompt in chat
-            await interaction.followup.send("Reply with `# new text`, e.g. `2. Oranges`", ephemeral=True)
-            def chk(m):
-                return m.author==interaction.user and m.channel_id==interaction.channel_id and re.match(r"^\d+\.\s+.+", m.content)
-            try:
-                msg = await self.cog.bot.wait_for("message", check=chk, timeout=60)
-            except asyncio.TimeoutError:
-                return await interaction.followup.send("✋ Timed out.", ephemeral=True)
-            idx,text = msg.content.split(".",1)
-            idx = int(idx)-1
-            if 0<=idx<len(self.poll_data['options']):
-                old = self.poll_data['options'][idx]
-                self.poll_data['options'][idx] = text.strip()
-                # preserve votes
-                cnt = self.poll_data['vote_count'].pop(old,0)
-                self.poll_data['vote_count'][text.strip()] = cnt
-                embed = self.poll_data['build'](self.poll_data)
-                await self.message.edit(embed=embed, view=self.poll_data['view'])
-                await msg.delete()
-                await interaction.followup.send(f"Edited option #{idx+1}.", ephemeral=True)
-            else:
-                await interaction.followup.send("Invalid index.", ephemeral=True)
+    @discord.ui.button(label="Edit", style=discord.ButtonStyle.secondary)
+    async def edit(self, button, interaction):
 
-        elif choice=="time":
-            await interaction.followup.send("Reply with new end time `MM/DD HH:MM`", ephemeral=True)
-            def chk2(m):
-                return m.author==interaction.user and re.match(r"^\d{2}/\d{2}\s+\d{2}:\d{2}$", m.content)
-            try:
-                msg2 = await self.cog.bot.wait_for("message", check=chk2, timeout=60)
-            except asyncio.TimeoutError:
-                return await interaction.followup.send("✋ Timed out.", ephemeral=True)
-            # parse timezone
-            tz = pytz.timezone(self.poll_data['tz'])
-            dt = datetime.strptime(msg2.content, "%m/%d %H:%M").replace(year=datetime.now(tz).year)
-            utc = tz.localize(dt).astimezone(pytz.utc)
-            self.poll_data['end'] = utc
-            embed = self.poll_data['build'](self.poll_data)
-            await self.message.edit(embed=embed, view=self.poll_data['view'])
-            await msg2.delete()
-            await interaction.followup.send("End time updated.", ephemeral=True)
+        # Collect inputs: question, mentions, each option
+        modal = discord.ui.Modal(title="Edit Poll")
+        question_input = discord.ui.TextInput(label="Question", default=self.poll_data['question'], max_length=200)
+        mention_input = discord.ui.TextInput(label="Mentions (e.g. @everyone)", default=self.poll_data.get('mention_text',''), required=False)
+        modal.add_item(question_input)
+        modal.add_item(mention_input)
+        for i,opt in enumerate(self.poll_data['options']):
+            modal.add_item(discord.ui.TextInput(label=f"Option {i+1}", default=opt, max_length=100))
 
-        else:  # remove
-            opts = self.poll_data['options']
-            text = "\n".join(f"{i+1}. {o}" for i,o in enumerate(opts))
-            await interaction.followup.send(f"Which to remove?\n{text}", ephemeral=True)
-            def chk3(m):
-                return m.author==interaction.user and m.content.isdigit()
-            try:
-                msg3 = await self.cog.bot.wait_for("message", check=chk3, timeout=60)
-            except asyncio.TimeoutError:
-                return await interaction.followup.send("✋ Timed out.", ephemeral=True)
-            i = int(msg3.content)-1
-            if 0<=i<len(opts):
-                rem = opts.pop(i)
-                self.poll_data['vote_count'].pop(rem,None)
-                embed = self.poll_data['build'](self.poll_data)
-                await self.message.edit(embed=embed, view=self.poll_data['view'])
-                await msg3.delete()
-                await interaction.followup.send(f"Removed option **{rem}**.", ephemeral=True)
-            else:
-                await interaction.followup.send("Invalid.", ephemeral=True)
+        async def on_submit(inner, inter: discord.Interaction):
+            vals = inner.children
+            self.poll_data['question'] = vals[0].value
+            mention_text = vals[1].value.strip()
+            self.poll_data['mention'] = bool(mention_text)
+            self.poll_data['mention_text'] = mention_text
+            # Update options but preserve counts
+            old_counts = [self.poll_data['vote_count'].get(o,0) for o in self.poll_data['options']]
+            new_opts = [c.value for c in vals[2:]]
+            self.poll_data['options'] = new_opts
+            self.poll_data['vote_count'] = {opt: (old_counts[i] if i < len(old_counts) else 0) for i,opt in enumerate(new_opts)}
 
-    @discord.ui.button(label="Close Settings", style=discord.ButtonStyle.secondary)
-    async def close(self, button, interaction):
-        await interaction.response.edit_message(content="Settings closed.", view=None, ephemeral=True)
+            # Rebuild buttons in view
+            view = self.poll_data['view']
+            view.clear_items()
+            # Option buttons
+            for i,opt in enumerate(new_opts):
+                btn = discord.ui.Button(label=OPTION_EMOJIS[i], custom_id=opt)
+                btn.callback = self.poll_data['button_callback']
+                view.add_item(btn)
+            # Add plus
+            plus = discord.ui.Button(label="➕", style=discord.ButtonStyle.secondary, custom_id="add_option")
+            plus.callback = self.cog.add_option_callback
+            view.add_item(plus)
+            # Settings button
+            settings = discord.ui.Button(..., custom_id="settings")
+            settings.callback = self.poll_data['cog'].settings_callback
+            view.add_item(settings)
+
+            channel = await self.cog.bot.fetch_channel(inter.channel_id)
+            msg = await channel.fetch_message(self.message_id)
+            await msg.edit(embed=self.poll_data['build_embed'](self.poll_data), view=view)
+            await inter.response.send_message("Poll updated.", ephemeral=True)
+
+        modal.on_submit = on_submit
+        await interaction.response.send_modal(modal)
+
+    @discord.ui.button(label="Voter List", style=discord.ButtonStyle.secondary)
+    async def voter_list(self, button, interaction):
+
+        options = [discord.SelectOption(label=opt, value=opt, emoji=OPTION_EMOJIS[i])
+                   for i,opt in enumerate(self.poll_data['options'])]
+        select = discord.ui.Select(placeholder="Choose option", options=options, custom_id="voter_select")
+
+        async def select_cb(select_inter: discord.Interaction):
+            sel = select_inter.data['values'][0]
+            voters = [f"<@{uid}>" for uid,v in self.poll_data['user_votes'].items()
+                      if (sel in v if isinstance(v,list) else v==sel)]
+            text = "No votes yet." if not voters else '\n'.join(voters)
+            await select_inter.response.send_message(f"Voters for {sel}:\n{text}", ephemeral=True)
+
+        select.callback = select_cb
+        view = discord.ui.View()
+        view.add_item(select)
+        await interaction.response.send_message("Select option to view voters:", view=view, ephemeral=True)
+
+    @discord.ui.button(label="End Poll", style=discord.ButtonStyle.secondary)
+    async def end_poll(self, button, interaction):
+
+        self.poll_data['closed'] = True
+        # Disable all option buttons
+        for item in self.poll_data['view'].children:
+            if item.custom_id not in ('settings','add_option'):
+                item.disabled = True
+        channel = await self.cog.bot.fetch_channel(interaction.channel_id)
+        msg = await channel.fetch_message(self.message_id)
+        await msg.edit(embed=self.poll_data['build_embed'](self.poll_data), view=self.poll_data['view'])
+        await interaction.response.send_message("Poll ended.", ephemeral=True)
+
+    @discord.ui.button(label="Export Votes", style=discord.ButtonStyle.primary)
+    async def export_votes(self, button, interaction):
+
+        poll = self.poll_data
+
+        # Build CSV in memory
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(["User", "Vote"])
+
+        # 1) All votes
+        for uid, vote in poll['user_votes'].items():
+            member = interaction.guild.get_member(uid)
+            name = member.display_name if member else str(uid)
+            if isinstance(vote, list):
+                vote = ", ".join(vote)
+            writer.writerow([name, vote])
+
+        # 2) Non-voters in specific role
+        role = interaction.guild.get_role(1334747903427870742)
+        if role:
+            writer.writerow([])
+            writer.writerow(["=== Did Not Vote ==="])
+            for member in role.members:
+                if member.id not in poll['user_votes']:
+                    writer.writerow([member.display_name, ""])
+
+        buf.seek(0)
+        discord_file = discord.File(fp=io.BytesIO(buf.getvalue().encode()), filename="poll_export.csv")
+
+        # Send ephemerally to the clicking user
+        await interaction.response.send_message(
+            "Here’s the full export:", file=discord_file, ephemeral=True
+        )
+
+    @discord.ui.button(label="Delete", style=discord.ButtonStyle.danger)
+    async def delete(self, button, interaction):
+
+        if interaction.user.id != self.poll_data['author_id']:
+            return await interaction.response.send_message("Only creator can delete.", ephemeral=True)
+        channel = await self.cog.bot.fetch_channel(interaction.channel_id)
+        msg = await channel.fetch_message(self.message_id)
+        await msg.delete()
+        self.cog.polls.pop(self.message_id, None)
+        await interaction.response.send_message("Poll deleted.", ephemeral=True)
+
 
 class PollCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.polls = {}
 
-    async def get_tz(self, user_id):
-        row = await self.bot.pg_pool.fetchrow("SELECT timezone FROM timezones WHERE user_id=$1", user_id)
-        return row["timezone"] if row else "UTC"
+    async def _create_poll(self, ctx, *, args: str):
+        """
+        Create a poll. Format:
+        !!poll [mention @everyone] [multiple] Question? | Opt1 | Opt2 | ... | MM/DD HH:MM
+        """
+        mention = False
+        mention_text = ''
+        if args.startswith("mention "):
+            mention = True
+            mention_text = '@everyone'
+            args = args[len("mention "):]
 
-    @commands.Cog.listener()
-    async def on_ready(self):
-        # sync slash
-        await self.bot.tree.sync()
+        multiple = False
+        if args.startswith("multiple "):
+            multiple = True
+            args = args[len("multiple "):]
 
-    @app_commands.command(name="poll", description="Create a poll")
-    @app_commands.describe(
-        question="Poll question",
-        mentions="Role or @everyone to mention",
-        multiple="Allow multiple votes",
-        end_time="MM/DD HH:MM (optional)",
-        option1="Option 1",
-        option2="Option 2",
-        option3="Option 3",
-        option4="Option 4",
-        option5="Option 5",
-    )
-    async def poll_slash(self, interaction: discord.Interaction,
-                         question: str,
-                         mentions: str = None,
-                         multiple: bool = False,
-                         end_time: str = None,
-                         option1: str = None,
-                         option2: str = None,
-                         option3: str = None,
-                         option4: str = None,
-                         option5: str = None):
-        await interaction.response.defer()
-        opts = [o for o in (option1,option2,option3,option4,option5) if o]
-        if len(opts)<2:
-            return await interaction.followup.send("Need ≥2 options.", ephemeral=True)
-        # parse end_time
-        tzname = await self.get_tz(interaction.user.id)
-        tz = pytz.timezone(tzname)
-        utc_end = None
-        if end_time:
-            if not re.match(r"^\d{2}/\d{2}\s+\d{2}:\d{2}$", end_time):
-                return await interaction.followup.send("Invalid end_time format.", ephemeral=True)
-            dt = datetime.strptime(end_time,"%m/%d %H:%M").replace(year=datetime.now(tz).year)
-            utc_end = tz.localize(dt).astimezone(pytz.utc)
+        parts = [p.strip() for p in args.split('|')]
+        if len(parts) < 3:
+            return await ctx.send("Provide question, 2+ options, optionally end time.")
 
+        # Detect end time
+        end_time = None
+        if re.match(r"^\d{2}/\d{2} \d{2}:\d{2}$", parts[-1]):
+            try:
+                user_tz_str = await self.get_user_timezone(ctx.author.id)
+                tz = pytz.timezone(user_tz_str)
+                dt = datetime.strptime(parts[-1], "%m/%d %H:%M").replace(year=datetime.now(tz).year)
+                end_time = tz.localize(dt).astimezone(pytz.utc)
+                parts = parts[:-1]
+            except Exception as e:
+                return await ctx.send(f"Error parsing end time: {e}")
+
+        question = parts[0]
+        options = parts[1:]
+        if not 2 <= len(options) <= 10:
+            return await ctx.send("Poll must have between 2 and 10 options.")
+
+        # Initialize poll data
         poll_data = {
             'question': question,
-            'options': opts.copy(),
-            'vote_count': {o:0 for o in opts},
+            'options': options.copy(),
+            'vote_count': {opt:0 for opt in options},
             'total_votes': 0,
             'user_votes': {},
-            'multiple': multiple,
-            'author': interaction.user.display_name,
-            'mention': mentions or "",
-            'end': utc_end,
-            'tz': tzname,
-            'cog': self
+            'voting_type': 'multiple' if multiple else 'single',
+            'author': ctx.author.display_name,
+            'author_id': ctx.author.id,
+            'mention': mention,
+            'mention_text': mention_text,
+            'end_time': end_time,
+            'closed': False
         }
+        # Give the modal access back to this cog instance
+        poll_data['cog'] = self
 
-        def build(pd):
-            # header
-            header = ""
-            if pd['end']:
+        # Build embed
+        def format_results():
+            txt = ''
+            for i,opt in enumerate(poll_data['options']):
+                cnt = poll_data['vote_count'].get(opt,0)
+                pct = (cnt/poll_data['total_votes']*100) if poll_data['total_votes']>0 else 0
+                filled = int(BAR_LENGTH * pct//100)
+                txt += f"{OPTION_EMOJIS[i]} {opt}\n[{'🟩'*filled}{'⬜'*(BAR_LENGTH-filled)}] | {pct:.1f}% ({cnt})\n"
+            return txt
+
+        def build_embed(data):
+            header = ''
+            if data['end_time']:
                 now = datetime.utcnow().replace(tzinfo=pytz.utc)
-                if now < pd['end']:
-                    ts = int(pd['end'].timestamp())
-                    header = f"**Poll ends:** <t:{ts}:F>\n\n"
+                if not data['closed'] and data['end_time']>now:
+                    header = f"⏳ Time remaining: {format_time_delta(data['end_time']-now)}\n\n"
                 else:
-                    header = "**The poll has ended.**\n\n"
-            # bars
-            txt=""
-            for i,o in enumerate(pd['options']):
-                cnt = pd['vote_count'][o]
-                pct = (cnt/pd['total_votes']*100) if pd['total_votes'] else 0
-                filled = int(BAR_LENGTH*pct//100)
-                txt+=f"{OPTION_EMOJIS[i]} {o}\n[{'🟩'*filled}{'⬜'*(BAR_LENGTH-filled)}] | {pct:.1f}% ({cnt})\n"
-            # mention field at bottom
-            if pd['mention']:
-                txt+=f"\n{pd['mention']}\n"
-            embed=discord.Embed(title=f"📊 **{pd['question']}**",
-                                description=header+txt,
-                                color=NEON_GREEN)
-            embed.set_footer(text=f"➕ Add Option | ⚙️ Settings | Created by {pd['author']}")
+                    header = "❌ Poll closed\n\n"
+            desc = header + format_results()
+            
+            embed = discord.Embed(
+                title=f"📊 {data['question']}",
+                description=desc,
+                color=0x39FF14
+            )
+
+            embed.set_footer(text=f"➕ Add Option | ⚙️ Settings | Created by {data['author']}")
             return embed
 
-        poll_data['build']=build
-
-        # create view
-        view=discord.ui.View(timeout=None)
-        async def vote_cb(interaction: discord.Interaction):
-            pd = self.polls[interaction.message.id]
+        # Callbacks
+        async def vote_callback(interaction: discord.Interaction):
+            poll = self.polls[interaction.message.id]
             uid = interaction.user.id
             choice = interaction.data['custom_id']
 
-            # Single-vote confirmation
-            if not pd['multiple'] and uid in pd['user_votes'] and pd['user_votes'][uid] != choice:
+            # Single‑vote confirmation
+            if poll['voting_type'] == 'single' and uid in poll['user_votes']:
+                # launch ConfirmView which will handle removal+re-render
+                view = ConfirmView(poll, interaction.message, choice)
                 return await interaction.response.send_message(
-                    "You already voted—remove old vote?",
-                    view=ConfirmView(pd, interaction.message, choice),
-                    ephemeral=True
+                    "You already voted. Remove your vote?", view=view, ephemeral=True
                 )
+            # Register new vote
+            poll['user_votes'][uid] = choice
+            poll['vote_count'][choice] = poll['vote_count'].get(choice, 0) + 1
+            poll['total_votes'] = len(poll['user_votes'])
 
-            # Multiple-vote toggle or single-vote register
-            if pd['multiple']:
-                user_list = pd['user_votes'].setdefault(uid, [])
-                if choice in user_list:
-                    user_list.remove(choice)
-                    pd['vote_count'][choice] -= 1
-                else:
-                    user_list.append(choice)
-                    pd['vote_count'][choice] += 1
-            else:
-                # either first vote or re-voted same choice
-                pd['user_votes'][uid] = choice
-                pd['vote_count'][choice] += 1
+            embed = poll['build_embed'](poll)
+            await interaction.response.edit_message(embed=embed, view=poll['view'])
 
-            pd['total_votes'] = len(pd['user_votes'])
-            await interaction.response.edit_message(embed=pd['build'](pd), view=pd['view'])
+        # Assemble view
+        view = discord.ui.View(timeout=None)
+        # Option buttons
+        for i,opt in enumerate(options):
+            btn = discord.ui.Button(label=OPTION_EMOJIS[i], custom_id=opt)
+            btn.callback = vote_callback
+            view.add_item(btn)
+        # Add option
+        plus = discord.ui.Button(label="➕", style=discord.ButtonStyle.secondary, custom_id="add_option")
+        plus.callback = self.add_option_callback
+        view.add_item(plus)
+        # Settings
+        settings = discord.ui.Button(
+            label="⚙️",
+            style=discord.ButtonStyle.secondary,
+            custom_id="settings"
+        )
+        # wire directly to the Cog’s settings_callback
+        settings.callback = self.settings_callback
+        view.add_item(settings)
 
-        # add buttons
-        for i,o in enumerate(opts):
-            b=discord.ui.Button(label=OPTION_EMOJIS[i], custom_id=o)
-            b.callback=vote_cb
-            view.add_item(b)
-        addb = discord.ui.Button(label="➕", style=discord.ButtonStyle.secondary, custom_id="add_option")
-        async def add_cb(interaction: discord.Interaction):
-            await interaction.response.send_modal(AddOptionModal(poll_data, interaction.message))
-        addb.callback = add_cb
-        view.add_item(addb)
-        setb = discord.ui.Button(label="⚙️", style=discord.ButtonStyle.secondary, custom_id="settings")
-        async def settings_cb(interaction: discord.Interaction):
-            await interaction.response.send_message(
-                "Poll Settings:",
-                view=SettingsView(self, poll_data, interaction.message),
-                ephemeral=True
-            )
-        setb.callback = settings_cb
-        view.add_item(setb)
+        embed = build_embed(poll_data)
+        # send a single message containing both custom mention_text and the embed
+        content = poll_data['mention_text'] if poll_data['mention_text'] else None
+        msg = await ctx.send(content=content, embed=embed, view=view)
+        poll_data['view'] = view
+        poll_data['build_embed'] = build_embed
+        poll_data['button_callback'] = vote_callback
+        self.polls[msg.id] = poll_data
 
-        msg=await interaction.followup.send(content=poll_data['mention'], embed=build(poll_data), view=view)
-        poll_data['view']=view
-        poll_data['channel_id'] = msg.channel.id
-        poll_data['vote_cb']=vote_cb
-        self.polls[msg.id]=poll_data
+        if end_time:
+            self.bot.loop.create_task(self.schedule_poll_end(msg.id))
 
-        if utc_end:
-            # schedule
-            delay=(utc_end-datetime.utcnow().replace(tzinfo=pytz.utc)).total_seconds()
-            asyncio.create_task(self._auto_close(msg.id, delay))
+    async def get_user_timezone(self, user_id):
+        """Fetch a user's timezone from Postgres (default UTC)."""
+        row = await self.bot.pg_pool.fetchrow(
+            "SELECT timezone FROM timezones WHERE user_id = $1",
+            user_id
+        )
+        return row["timezone"] if row and row["timezone"] else "UTC"
 
-    async def _auto_close(self, msg_id, delay):
-        if delay>0: await asyncio.sleep(delay)
-        pd=self.polls.get(msg_id)
-        if not pd: return
-        pd['end']=datetime.utcnow().replace(tzinfo=pytz.utc)
-        # disable option & add
-        for i in pd['view'].children:
-            if i.custom_id not in ("settings",):
-                i.disabled=True
-        ch = self.bot.get_channel(pd['channel_id'])
-        msg=await ch.fetch_message(msg_id)
-        await msg.edit(embed=pd['build'](pd), view=pd['view'])
+    # Shared callbacks for add_option and settings
+    async def add_option_callback(self, interaction: discord.Interaction):
+        pid = interaction.message.id
+        poll = self.polls.get(pid)
+        if not poll or interaction.user.id != poll['author_id']:
+            return await interaction.response.send_message("No permission.", ephemeral=True)
+        await interaction.response.send_modal(AddOptionModal(poll, interaction.message))
+
+    async def settings_callback(self, interaction: discord.Interaction):
+        poll = self.polls.get(interaction.message.id)
+        roles = [r.name for r in interaction.user.roles]
+        if not any(r in roles for r in ('Server Owner','Manager','Moderator','The BotFather')):
+            return await interaction.response.send_message("No permission.", ephemeral=True)
+        # Instead of DMing, send the settings view ephemerally in the same channel:
+        await interaction.response.send_message(
+            "Poll Settings:",
+            view=SettingsView(self, poll, interaction.message.id),
+            ephemeral=True
+        )
+        
+    async def schedule_poll_end(self, message_id):
+        poll = self.polls.get(message_id)
+        if not poll or not poll.get('end_time'):
+            return
+        now = datetime.utcnow().replace(tzinfo=pytz.utc)
+        wait = (poll['end_time'] - now).total_seconds()
+        if wait>0:
+            await asyncio.sleep(wait)
+        poll['closed'] = True
+        # disable all but settings/add_option
+        for item in poll['view'].children:
+            if item.custom_id not in ('settings','add_option'):
+                item.disabled = True
+        channel = self.bot.get_channel(poll['view']._timeout)  # avoid missing channel id
+        try:
+            msg = await channel.fetch_message(message_id)
+            await msg.edit(embed=poll['build_embed'](poll), view=poll['view'])
+        except:
+            pass
+        await asyncio.sleep(86400)
+        self.polls.pop(message_id, None)
+
+    @app_commands.command(name="poll", description="Create a poll via slash")
+    @app_commands.describe(
+        question="The poll question",
+        mentions="Text to mention (e.g. @everyone)",
+        multiple="Allow multiple votes",
+        end_time="End time MM/DD HH:MM (optional)"
+    )
+    async def poll_slash(self, interaction: discord.Interaction,
+                          question: str,
+                          mentions: str = None,
+                          multiple: bool = False,
+                          end_time: str = None,
+                          option1: str = None,
+                          option2: str = None,
+                          option3: str = None,
+                          option4: str = None,
+                          option5: str = None,
+                          option6: str = None,
+                          option7: str = None,
+                          option8: str = None,
+                          option9: str = None,
+                          option10: str = None):
+        # 1) Acknowledge immediately
+        await interaction.response.defer()
+
+        # 2) Gather options
+        opts = [o for o in (
+            option1, option2, option3, option4, option5,
+            option6, option7, option8, option9, option10
+        ) if o]
+        if len(opts) < 2:
+            return await interaction.followup.send("Provide at least 2 options.", ephemeral=True)
+
+        # 3) Reconstruct the text‐command style args string
+        parts = []
+        if mentions:
+            parts.append("mention")
+        if multiple:
+            parts.append("multiple")
+        # join question + all options, plus end_time if given
+        question_and_opts = question + " | " + " | ".join(opts)
+        if end_time:
+            question_and_opts += f" | {end_time}"
+        parts.append(question_and_opts)
+        args = " ".join(parts)
+
+        # 4) Instead of delegating, let's craft mention_text and call the core logic
+        ctx = await commands.Context.from_interaction(interaction)
+        full_args = f"{mentions or ''} { 'multiple ' if multiple else ''}{args}"
+        try:
+            await self._create_poll(ctx, args=full_args.strip())
+        except Exception as e:
+            # send the exception so you can debug
+            await interaction.followup.send(f"🚨 Poll creation error: {e}", ephemeral=True)
+            # re-raise if you want it in your logs
+            raise
+        # (no additional defer/response needed— your poll command has already sent!)
 
 async def setup(bot):
     await bot.add_cog(PollCog(bot))
+    print("Loaded PollCog!")
