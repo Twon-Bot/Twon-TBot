@@ -101,6 +101,7 @@ class SettingsView(discord.ui.View):
 
     @discord.ui.button(label="Edit", style=discord.ButtonStyle.secondary)
     async def edit(self, button, interaction):
+        await interaction.response.defer(ephemeral=True)
 
         # Collect inputs: question, mentions, each option
         modal = discord.ui.Modal(title="Edit Poll")
@@ -150,6 +151,7 @@ class SettingsView(discord.ui.View):
 
     @discord.ui.button(label="Voter List", style=discord.ButtonStyle.secondary)
     async def voter_list(self, button, interaction):
+        await interaction.response.defer(ephemeral=True)
 
         options = [discord.SelectOption(label=opt, value=opt, emoji=OPTION_EMOJIS[i])
                    for i,opt in enumerate(self.poll_data['options'])]
@@ -169,6 +171,7 @@ class SettingsView(discord.ui.View):
 
     @discord.ui.button(label="End Poll", style=discord.ButtonStyle.secondary)
     async def end_poll(self, button, interaction):
+        await interaction.response.defer(ephemeral=True)
 
         self.poll_data['closed'] = True
         # Disable all option buttons
@@ -182,6 +185,7 @@ class SettingsView(discord.ui.View):
 
     @discord.ui.button(label="Export Votes", style=discord.ButtonStyle.primary)
     async def export_votes(self, button, interaction):
+        await interaction.response.defer(ephemeral=True)
 
         poll = self.poll_data
 
@@ -217,6 +221,7 @@ class SettingsView(discord.ui.View):
 
     @discord.ui.button(label="Delete", style=discord.ButtonStyle.danger)
     async def delete(self, button, interaction):
+        await interaction.response.defer(ephemeral=True)
 
         if interaction.user.id != self.poll_data['author_id']:
             return await interaction.response.send_message("Only creator can delete.", ephemeral=True)
@@ -302,7 +307,7 @@ class PollCog(commands.Cog):
                 cnt = poll_data['vote_count'].get(opt,0)
                 pct = (cnt/poll_data['total_votes']*100) if poll_data['total_votes']>0 else 0
                 filled = int(BAR_LENGTH * pct//100)
-                txt += f"{OPTION_EMOJIS[i]} {opt}\n[{'🟩'*filled}{'⬜'*(BAR_LENGTH-filled)}] | {pct:.1f}% ({cnt})\n"
+                txt += f"{OPTION_EMOJIS[i]} {opt}\n{'🟩'*filled}{'⬜'*(BAR_LENGTH-filled)} | {pct:.1f}% ({cnt})\n"
             return txt
 
         def build_embed(data):
@@ -314,6 +319,11 @@ class PollCog(commands.Cog):
                 else:
                     header = "❌ Poll closed\n\n"
             desc = header + format_results()
+            # ─── tell them single vs multiple ────────────────────────────
+            if data['voting_type'] == 'single':
+                desc += "\n*You may select only one option in this poll.*\n"
+            else:
+                desc += "\n*You may select multiple options in this poll.*\n"
             
             embed = discord.Embed(
                 title=f"📊 {data['question']}",
