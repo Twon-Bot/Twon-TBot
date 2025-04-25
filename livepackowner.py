@@ -39,19 +39,31 @@ class LivePackOwnerCog(commands.Cog):
 
         # helper to parse a single MM/DD HH:MM string into a UTC datetime
         async def parse_input(ts: str):
-            # check format
-            if not re.match(r"^\d{2}/\d{2}\s+\d{2}:\d{2}$", ts):
-                raise ValueError("Format must be MM/DD HH:MM")
-            # get user tz
+            """
+            ts may be e.g. "4/5 8:0", "04/05 8:00", "4/05 08:0", "04/05 08:00", etc.
+            Returns a timezone-aware UTC datetime or raises ValueError.
+            """
+            # 1–2 digits for month/day, whitespace, 1–2 digits hour : 1–2 digits minute
+            m = re.match(r"^(\d{1,2})/(\d{1,2})\s+(\d{1,2}):(\d{1,2})$", ts.strip())
+            if not m:
+                raise ValueError("Time must be in MM/DD HH:MM form (you may omit leading zeros)")
+            
+            mon, day, hr, minute = map(int, m.groups())
+            # optional: validate ranges
+            if not (1 <= mon <= 12 and 1 <= day <= 31 and 0 <= hr < 24 and 0 <= minute < 60):
+                raise ValueError("Month/day/hour/minute out of range")
+
+            # fetch user tz
             tzname = await self.get_user_timezone(ctx.author.id)
             try:
                 tz = pytz.timezone(tzname)
             except pytz.UnknownTimeZoneError:
                 tz = pytz.utc
-            # parse into naive dt with current year
-            dt = datetime.strptime(ts, "%m/%d %H:%M").replace(year=datetime.now(tz).year)
-            # localize then convert to UTC
-            return tz.localize(dt).astimezone(pytz.utc)
+
+            # build localized dt (use current year)
+            now = datetime.now(tz)
+            local = tz.localize(datetime(year=now.year, month=mon, day=day, hour=hr, minute=minute))
+            return local.astimezone(pytz.utc)
 
         # if they gave us the time already:
         if when is not None:
