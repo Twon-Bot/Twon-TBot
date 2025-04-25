@@ -90,6 +90,15 @@ class TrackingCog(commands.Cog):
                 await ctx.send(template.format(**rec))
             return
 
+        # --- ANNOUNCEMENT output: simple comma-based summary ---
+        if action in ("announcement", "a", "ann", "announce"):
+            summary = []
+            for rec in self.tracked:
+                owner = rec.get("OWNER", "Unknown")
+                contents = rec.get("CONTENTS", "")
+                summary.append(f"{owner}, {contents}")
+            return await ctx.send(" | ".join(summary))
+
         # --- otherwise: fall back to prompting a new entry ---
         prompt = (
             "**Please provide:**\n"
@@ -147,10 +156,10 @@ class TrackingCog(commands.Cog):
         owner="Owner's name",
         expire_time="MM/DD HH:MM",
         verification_link="URL",
-        pack1_rarity="Rarity of pack 1",
-        pack1_contents="Contents of pack 1",
-        pack2_rarity="(optional) Rarity of pack 2",
-        pack2_contents="(optional) Contents of pack 2"
+        pack1_rarity="Rarity of pack1",
+        pack1_contents="Card 1 contents",
+        pack2_rarity="(optional) Rarity of pack2",
+        pack2_contents="(optional) Card 2 contents"
     )
     @app_commands.choices(pack1_rarity=[
         app_commands.Choice(name="⭐ ⭐", value="⭐ ⭐"),
