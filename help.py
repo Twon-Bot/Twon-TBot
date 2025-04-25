@@ -222,7 +222,8 @@ class HelpCog(commands.Cog):
                     "- `!!tracking pack X` → Shows pack number X saved in the .json file\n"
                     "- `!!tracking packs` → Displays a list of all currently saved packs in the .json file\n"
                     "- `!!tracking clear` → Deletes/Erases all currently saved tracking outputs from the .json\n"
-                    "- `!!tracking output` → Output all saved tracking files in numerical order"
+                    "- `!!tracking output` → Output all saved tracking files in numerical order\n"
+                    "- `!!tracking announcement` → Output 'Player1, Player1_Contents, etc.' input for the announcement."
                 ),
                 color=0xFFC107
             )
