@@ -303,7 +303,7 @@ class HelpCog(commands.Cog):
         elif topic in ['livepackowner', 'livepackowners', 'lpo']:
             embed = discord.Embed(
                 title="!!livepackowner  //  !!livepackowners  //  !!lpo",
-                description="Command to output the message for new Live Pack Owners.\n`!!lpo → Deletes your '!!lpo' input, then outputs the message.`",
+                description="Command to output the message for new Live Pack Owners. This command works in two methods:\n**1.**`!!lpo MM/DD HH:MM` → Deletes your input, then outputs the message.\n**2.**`!!lpo` → Bot requests date/time input → Input `MM/DD HH:MM` → Bot deletes your input, then outputs message.",
                 color=0xFFC107
             )
             await send(embed=embed, ephemeral=is_inter)
