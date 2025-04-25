@@ -118,7 +118,7 @@ class AnnouncementCog(commands.Cog):
             await ctx.send("You took too long to respond. Please try again.")
             return
 
-        if ctx.invoked_with in ["ann", "announce"]:
+        if ctx.invoked_with in ["ann", "announce", "a"]:
             confirm_msg = await ctx.send("React with 👍 to confirm this announcement to @/everyone. React with ⏳ to schedule it.")
             await confirm_msg.add_reaction("👍")
             await confirm_msg.add_reaction("⏳")
