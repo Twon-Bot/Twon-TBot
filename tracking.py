@@ -50,7 +50,7 @@ class TrackingCog(commands.Cog):
         """  
         No args: prompt for a new tracking entry.  
         Sub‑commands:  
-          clear/empty, packs, pack <n>, output  
+          clear/empty, packs, pack <n>, output, announcement  
         """
         # --- CLEAR / EMPTY ---
         if action in ("clear", "empty"):
@@ -58,15 +58,15 @@ class TrackingCog(commands.Cog):
             await self._save()
             return await ctx.send("✅ All tracking entries have been cleared.")
 
-        # --- PACKS: list summaries ---
+        # --- PACKS: list summaries sorted by pack number ---
         if action == "packs":
             embed = discord.Embed(
-                title=f"🌸 {len(self.tracked)} Tracked Packs",
+                title=f"🌸 {len(self.tracked)} Tracked Packs",
                 color=0xFF69B4
             )
-            for rec in self.tracked:
+            for rec in sorted(self.tracked, key=lambda r: r['PACK_NUMBER']):
                 embed.add_field(
-                    name=f"Pack #{rec['PACK_NUMBER']} – {rec['OWNER']}",
+                    name=f"Pack #{rec['PACK_NUMBER']} – {rec['OWNER']}",
                     value=rec["CONTENTS"],
                     inline=False
                 )
@@ -77,27 +77,27 @@ class TrackingCog(commands.Cog):
             num = int(arg)
             rec = next((r for r in self.tracked if r["PACK_NUMBER"] == num), None)
             if not rec:
-                return await ctx.send(f"❌ No entry found for pack #{num}.")
+                return await ctx.send(f"❌ No entry found for pack #{num}.")
             template = self.get_pack_tracking_format()
             text = template.format(**rec)
             return await ctx.send(text)
 
-        # --- OUTPUT: show all saved entries back‑to‑back ---
+        # --- OUTPUT: show all saved entries back‑to‑back sorted ---
         if action == "output":
             await ctx.message.delete()
             template = self.get_pack_tracking_format()
-            for rec in self.tracked:
+            for rec in sorted(self.tracked, key=lambda r: r['PACK_NUMBER']):
                 await ctx.send(template.format(**rec))
             return
 
-        # --- ANNOUNCEMENT output: simple comma-based summary ---
+        # --- ANNOUNCEMENT output: simple comma-based summary sorted ---
         if action in ("announcement", "a", "ann", "announce"):
             summary = []
-            for rec in self.tracked:
+            for rec in sorted(self.tracked, key=lambda r: r['PACK_NUMBER']):
                 owner = rec.get("OWNER", "Unknown")
                 contents = rec.get("CONTENTS", "")
                 summary.append(f"{owner}, {contents}")
-            return await ctx.send(" | ".join(summary))
+            return await ctx.send(" , ".join(summary))
 
         # --- otherwise: fall back to prompting a new entry ---
         prompt = (
@@ -156,9 +156,9 @@ class TrackingCog(commands.Cog):
         owner="Owner's name",
         expire_time="MM/DD HH:MM",
         verification_link="URL",
-        pack1_rarity="Rarity of pack1",
+        pack1_rarity="Rarity of card 1",
         pack1_contents="Card 1 contents",
-        pack2_rarity="(optional) Rarity of pack2",
+        pack2_rarity="(optional) Rarity of card 2",
         pack2_contents="(optional) Card 2 contents"
     )
     @app_commands.choices(pack1_rarity=[
@@ -186,7 +186,7 @@ class TrackingCog(commands.Cog):
         await interaction.response.defer(ephemeral=False)
 
         try:
-            # combine rarities + contents
+            # combine rarities + contents
             contents = f"{pack1_rarity.value} {pack1_contents}"
             if pack2_rarity and pack2_contents:
                 contents += f" + {pack2_rarity.value} {pack2_contents}"
