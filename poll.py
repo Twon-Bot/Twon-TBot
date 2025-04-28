@@ -154,6 +154,7 @@ class SettingsView(discord.ui.View):
         options = [discord.SelectOption(label=opt, value=opt, emoji=OPTION_EMOJIS[i])
                    for i,opt in enumerate(self.poll_data['options'])]
         select = discord.ui.Select(placeholder="Choose option", options=options, custom_id="voter_select")
+        view = discord.ui.View()      # ← move here so callback can close over it
 
         async def select_cb(select_inter: discord.Interaction):
             sel = select_inter.data['values'][0]
@@ -163,7 +164,6 @@ class SettingsView(discord.ui.View):
             await select_inter.response.edit_message(content=f"Voters for {sel}:\n{text}", view=view, ephemeral=True)
 
         select.callback = select_cb
-        view = discord.ui.View()
         view.add_item(select)
         await interaction.response.send_message("Select option to view voters:", view=view, ephemeral=True)
 
@@ -394,14 +394,12 @@ class PollCog(commands.Cog):
                 # disable all option buttons now that vote is locked
                 # remove all option-buttons and “add option” once poll is over,
                 # leave only the Settings button
-                for item in list(poll['view'].children):
-                    if item.custom_id != 'settings':
+                for item in poll['view'].children:
+                    if item.custom_id not in ('settings','add_option'):
                         item.disabled = True
-                # after disabling every non-settings button, update once:
-                # rebuild the embed here (embed was undefined)
-                embed = poll['build_embed'](poll)
-                await interaction.response.edit_message(embed=embed, view=poll['view'])
-            return
+                # update once after disabling
+                await interaction.response.edit_message(embed=poll['build_embed'](poll), view=poll['view'])
+                return
 
             # ─── multiple-vote mode ─────────────────────────────────────
             # ensure we have a list to track this user’s votes
