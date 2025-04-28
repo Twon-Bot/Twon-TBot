@@ -101,7 +101,6 @@ class SettingsView(discord.ui.View):
 
     @discord.ui.button(label="Edit", style=discord.ButtonStyle.secondary)
     async def edit(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer(ephemeral=True)
 
         # Collect inputs: question, mentions, each option
         modal = discord.ui.Modal(title="Edit Poll")
@@ -151,7 +150,6 @@ class SettingsView(discord.ui.View):
 
     @discord.ui.button(label="Voters", style=discord.ButtonStyle.secondary)
     async def voter_list(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer(ephemeral=True)
 
         options = [discord.SelectOption(label=opt, value=opt, emoji=OPTION_EMOJIS[i])
                    for i,opt in enumerate(self.poll_data['options'])]
@@ -171,23 +169,37 @@ class SettingsView(discord.ui.View):
 
     @discord.ui.button(label="End Poll", style=discord.ButtonStyle.secondary)
     async def end_poll(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Show confirmation prompt
         confirm_view = discord.ui.View(timeout=30)
 
-        # make confirm button
+        # ── Confirm button ────────────────────────────
         confirm_btn = discord.ui.Button(label="Confirm End Poll", style=discord.ButtonStyle.danger)
         async def confirm_cb(confirm_inter: discord.Interaction):
-            # … your “actually end” logic …
-            await confirm_inter.response.edit_message(content="Poll ended.", view=None, ephemeral=True)
+            # 1) mark closed
+            self.poll_data['closed'] = True
+            # 2) disable all non-settings/add_option buttons
+            for item in list(self.poll_data['view'].children):
+                if getattr(item, 'custom_id', None) not in ('settings','add_option'):
+                    item.disabled = True
+            # 3) edit the original poll message
+            channel = self.cog.bot.get_channel(self.poll_data['channel_id'])
+            poll_msg = await channel.fetch_message(self.message_id)
+            await poll_msg.edit(embed=self.poll_data['build_embed'](self.poll_data), view=self.poll_data['view'])
+            # 4) edit the confirmation prompt
+            await confirm_inter.response.edit_message(content="✅ Poll ended.", view=None, ephemeral=True)
+            confirm_view.stop()
         confirm_btn.callback = confirm_cb
         confirm_view.add_item(confirm_btn)
 
-        # make cancel button
+        # ── Cancel button ─────────────────────────────
         cancel_btn = discord.ui.Button(label="Cancel", style=discord.ButtonStyle.secondary)
         async def cancel_cb(cancel_inter: discord.Interaction):
-            await cancel_inter.response.edit_message(content="Cancelled.", view=None, ephemeral=True)
+            await cancel_inter.response.edit_message(content="❌ Cancelled.", view=None, ephemeral=True)
+            confirm_view.stop()
         cancel_btn.callback = cancel_cb
         confirm_view.add_item(cancel_btn)
 
+        # send the ephemeral confirmation prompt
         await interaction.response.send_message("Are you sure you want to end the poll?", view=confirm_view, ephemeral=True)
 
     @discord.ui.button(label="Export Votes", style=discord.ButtonStyle.primary)
@@ -222,13 +234,12 @@ class SettingsView(discord.ui.View):
         discord_file = discord.File(fp=io.BytesIO(buf.getvalue().encode()), filename="poll_export.csv")
 
         # Send ephemerally to the clicking user
-        await interaction.response.send_message(
+        await interaction.followup.send(
             "Here’s the full export:", file=discord_file, ephemeral=True
         )
 
     @discord.ui.button(label="Delete", style=discord.ButtonStyle.danger)
     async def delete(self, button, interaction):
-        await interaction.response.defer(ephemeral=True)
 
         if interaction.user.id != self.poll_data['author_id']:
             return await interaction.response.send_message("Only creator can delete.", ephemeral=True)
@@ -268,6 +279,12 @@ class PollCog(commands.Cog):
             multiple = True
             args = args[len("multiple "):]
 
+        # at top of _create_poll, before parsing end‐time:
+        reminder = False
+        if args.startswith("reminder "):
+            reminder = True
+            args = args[len("reminder "):]
+
         parts = [p.strip() for p in args.split('|')]
         if len(parts) < 3:
             return await ctx.send("Provide question, 2+ options, optionally end time.")
@@ -302,6 +319,8 @@ class PollCog(commands.Cog):
             'mention': mention,
             'mention_text': mention_text,
             'end_time': end_time,
+            'reminder': reminder,
+            'channel_id': ctx.channel.id,
             'closed': False
         }
         # Give the modal access back to this cog instance
@@ -390,6 +409,15 @@ class PollCog(commands.Cog):
             embed = poll['build_embed'](poll)
             await interaction.response.edit_message(embed=embed, view=poll['view'])
 
+            # after updating poll['user_votes']…
+            # remove pending role
+            vote_pending = discord.utils.get(interaction.user.roles, id=1366303580591755295)
+            if vote_pending:
+                try:
+                    await interaction.user.remove_roles(vote_pending, reason="Voted in poll")
+                except:
+                    pass
+
         # Assemble view
         view = discord.ui.View(timeout=None)
         # Option buttons
@@ -429,6 +457,10 @@ class PollCog(commands.Cog):
         self.polls[msg.id] = poll_data
 
         if end_time:
+            # schedule the one-hour warning
+            if poll_data['reminder']:
+                self.bot.loop.create_task(self.schedule_poll_reminder(msg.id))
+            # schedule the actual close
             self.bot.loop.create_task(self.schedule_poll_end(msg.id))
 
     async def get_user_timezone(self, user_id):
@@ -472,7 +504,7 @@ class PollCog(commands.Cog):
         for item in poll['view'].children:
             if item.custom_id not in ('settings','add_option'):
                 item.disabled = True
-        channel = self.bot.get_channel(poll['view']._timeout)  # avoid missing channel id
+        channel = self.bot.get_channel(poll['channel_id'])  # avoid missing channel id
         try:
             msg = await channel.fetch_message(message_id)
             await msg.edit(embed=poll['build_embed'](poll), view=poll['view'])
@@ -481,28 +513,77 @@ class PollCog(commands.Cog):
         await asyncio.sleep(86400)
         self.polls.pop(message_id, None)
 
+    async def schedule_poll_reminder(self, message_id):
+        poll = self.polls.get(message_id)
+        if not poll or not poll.get('end_time'):
+            return
+
+        now = datetime.utcnow().replace(tzinfo=pytz.utc)
+        remind_at = poll['end_time'] - timedelta(hours=1)
+        wait = (remind_at - now).total_seconds()
+        if wait > 0:
+            await asyncio.sleep(wait)
+
+        # do nothing if poll already closed
+        if poll.get('closed'):
+            return
+
+        # fetch channel & message
+        channel = self.bot.get_channel(poll['channel_id'])
+        if not channel:
+            return
+        msg = await channel.fetch_message(message_id)
+
+        # fetch roles
+        guild = channel.guild
+        player_role = guild.get_role(1334747903427870742)
+        vote_pending_role = guild.get_role(1366303580591755295)
+        if not player_role or not vote_pending_role:
+            # roles not found → bail
+            return
+
+        # assign @Vote_Pending to every @Player who hasn't voted
+        for member in player_role.members:
+            if member.id not in poll['user_votes']:
+                try:
+                    await member.add_roles(vote_pending_role, reason="Poll reminder: please vote")
+                except:
+                    pass
+
+        # send a reminder ping
+        await channel.send(
+            f"{vote_pending_role.mention} Poll “{poll['question']}” ends in 1 hour—please cast your vote!",
+            allowed_mentions=discord.AllowedMentions(roles=True)
+        )
+
     @app_commands.command(name="poll", description="Create a poll via slash")
     @app_commands.describe(
         question="The poll question",
         mentions="Text to mention (e.g. @everyone)",
         multiple="Allow multiple votes",
-        end_time="End time MM/DD HH:MM (optional)"
+        end_time="End time MM/DD HH:MM (optional)",
+        reminder="Send 1-hour warning to non-voters",
     )
-    async def poll_slash(self, interaction: discord.Interaction,
-                          question: str,
-                          mentions: str = None,
-                          multiple: bool = False,
-                          end_time: str = None,
-                          option1: str = None,
-                          option2: str = None,
-                          option3: str = None,
-                          option4: str = None,
-                          option5: str = None,
-                          option6: str = None,
-                          option7: str = None,
-                          option8: str = None,
-                          option9: str = None,
-                          option10: str = None):
+    async def poll_slash(
+        self,
+        interaction: discord.Interaction,
+        question: str,
+        mentions: str = None,
+        multiple: bool = False,
+        end_time: str = None,
+        reminder: bool = False,
+        option1: str = None,                          
+        option2: str = None,
+        option3: str = None,
+        option4: str = None,
+        option5: str = None,
+        option6: str = None,
+        option7: str = None,
+        option8: str = None,
+        option9: str = None,
+        option10: str = None
+    ):
+
         # 1) Acknowledge immediately
         await interaction.response.defer()
 
@@ -531,7 +612,7 @@ class PollCog(commands.Cog):
         ctx = await commands.Context.from_interaction(interaction)
         full_args = f"{mentions or ''} { 'multiple ' if multiple else ''}{args}"
         try:
-            await self._create_poll(ctx, args=full_args.strip())
+            await self._create_poll(ctx, args=full_args.strip(), reminder=reminder)
         except Exception as e:
             # send the exception so you can debug
             await interaction.followup.send(f"🚨 Poll creation error: {e}", ephemeral=True)
