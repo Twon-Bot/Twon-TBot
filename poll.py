@@ -255,7 +255,7 @@ class PollCog(commands.Cog):
         self.bot = bot
         self.polls = {}
 
-    async def _create_poll(self, ctx, *, args: str):
+    async def _create_poll(self, ctx, *, args: str, reminder: bool=False):
         """
         Create a poll. Format:
         !!poll [mention @everyone] [multiple] Question? | Opt1 | Opt2 | ... | MM/DD HH:MM
@@ -596,17 +596,19 @@ class PollCog(commands.Cog):
             return await interaction.followup.send("Provide at least 2 options.", ephemeral=True)
 
         # 3) Reconstruct the text‐command style args string
-        parts = []
-        if mentions:
-            parts.append("mention")
-        if multiple:
-            parts.append("multiple")
-        # join question + all options, plus end_time if given
+        # build exactly: [<@&role>] [multiple ] [reminder ] Question | Opt1 | Opt2 [| end_time]
         question_and_opts = question + " | " + " | ".join(opts)
         if end_time:
             question_and_opts += f" | {end_time}"
-        parts.append(question_and_opts)
-        args = " ".join(parts)
+
+        flags = ""
+        if multiple:
+            flags += "multiple "
+        if reminder:
+            flags += "reminder "
+
+        # prefix with the actual mention text (e.g. "<@&123…>") if given
+        args = f"{(mentions or '').strip()} {flags}{question_and_opts}".strip()
 
         # 4) Instead of delegating, let's craft mention_text and call the core logic
         ctx = await commands.Context.from_interaction(interaction)
