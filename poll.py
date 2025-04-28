@@ -160,7 +160,7 @@ class SettingsView(discord.ui.View):
             voters = [f"<@{uid}>" for uid,v in self.poll_data['user_votes'].items()
                       if (sel in v if isinstance(v,list) else v==sel)]
             text = "No votes yet." if not voters else '\n'.join(voters)
-            await select_inter.response.send_message(f"Voters for {sel}:\n{text}", ephemeral=True)
+            await select_inter.response.edit_message(content=f"Voters for {sel}:\n{text}", view=view, ephemeral=True)
 
         select.callback = select_cb
         view = discord.ui.View()
@@ -239,16 +239,28 @@ class SettingsView(discord.ui.View):
         )
 
     @discord.ui.button(label="Delete", style=discord.ButtonStyle.danger)
-    async def delete(self, button, interaction):
-
+    async def delete(self, interaction: discord.Interaction, button):
         if interaction.user.id != self.poll_data['author_id']:
             return await interaction.response.send_message("Only creator can delete.", ephemeral=True)
-        channel = await self.cog.bot.fetch_channel(interaction.channel_id)
-        msg = await channel.fetch_message(self.message_id)
-        await msg.delete()
-        self.cog.polls.pop(self.message_id, None)
-        await interaction.response.send_message("Poll deleted.", ephemeral=True)
 
+        confirm_view = discord.ui.View(timeout=30)
+        btn_yes = discord.ui.Button(label="Confirm Delete", style=discord.ButtonStyle.danger)
+        async def yes_cb(i):
+            channel = self.cog.bot.get_channel(self.poll_data['channel_id'])
+            msg = await channel.fetch_message(self.message_id)
+            await msg.delete()
+            self.cog.polls.pop(self.message_id, None)
+            await i.response.edit_message(content="✅ Poll deleted.", view=None, ephemeral=True)
+        btn_yes.callback = yes_cb
+        confirm_view.add_item(btn_yes)
+
+        btn_no = discord.ui.Button(label="Cancel", style=discord.ButtonStyle.secondary)
+        async def no_cb(i):
+            await i.response.edit_message(content="❌ Delete cancelled.", view=None, ephemeral=True)
+        btn_no.callback = no_cb
+        confirm_view.add_item(btn_no)
+
+        await interaction.response.send_message("Are you sure you want to delete this poll?", view=confirm_view, ephemeral=True)
 
 class PollCog(commands.Cog):
     def __init__(self, bot):
@@ -384,7 +396,7 @@ class PollCog(commands.Cog):
                 # leave only the Settings button
                 for item in list(poll['view'].children):
                     if item.custom_id != 'settings':
-                        poll['view'].remove_item(item)
+                        item.disabled = True
                         # update the embed + view
                         embed = poll['build_embed'](poll)
                         await interaction.response.edit_message(embed=embed, view=poll['view'])
@@ -446,8 +458,7 @@ class PollCog(commands.Cog):
         # Trying to add 'mention' with ping into poll from old code
         allowed = discord.AllowedMentions(roles=True, everyone=True)
         msg = await ctx.send(
-            content=poll_data['mention_text'], 
-            embed=embed, 
+            content=poll_data['mention_text'] or None,            embed=embed, 
             view=view, 
             allowed_mentions=allowed)
 
@@ -607,8 +618,8 @@ class PollCog(commands.Cog):
         if reminder:
             flags += "reminder "
 
-        # prefix with the actual mention text (e.g. "<@&123…>") if given
-        args = f"{(mentions or '').strip()} {flags}{question_and_opts}".strip()
+        # build args so that question_and_opts is the very first “|”-split piece
+        args = f"{flags}{question_and_opts}".strip()
 
         # 4) Instead of delegating, let's craft mention_text and call the core logic
         ctx = await commands.Context.from_interaction(interaction)
