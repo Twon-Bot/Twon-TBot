@@ -136,7 +136,7 @@ class SettingsView(discord.ui.View):
             plus.callback = self.cog.add_option_callback
             view.add_item(plus)
             # Settings button
-            settings = discord.ui.Button(..., custom_id="settings")
+            settings = discord.ui.Button(label="⚙️", style=discord.ButtonStyle.secondary, custom_id="settings")
             settings.callback = self.poll_data['cog'].settings_callback
             view.add_item(settings)
 
@@ -154,6 +154,7 @@ class SettingsView(discord.ui.View):
         options = [discord.SelectOption(label=opt, value=opt, emoji=OPTION_EMOJIS[i])
                    for i,opt in enumerate(self.poll_data['options'])]
         select = discord.ui.Select(placeholder="Choose option", options=options, custom_id="voter_select")
+        view = discord.ui.View()
 
         async def select_cb(select_inter: discord.Interaction):
             sel = select_inter.data['values'][0]
@@ -163,7 +164,6 @@ class SettingsView(discord.ui.View):
             await select_inter.response.edit_message(content=f"Voters for {sel}:\n{text}", view=view, ephemeral=True)
 
         select.callback = select_cb
-        view = discord.ui.View()
         view.add_item(select)
         await interaction.response.send_message("Select option to view voters:", view=view, ephemeral=True)
 
@@ -397,10 +397,9 @@ class PollCog(commands.Cog):
                 for item in list(poll['view'].children):
                     if item.custom_id != 'settings':
                         item.disabled = True
-                        # update the embed + view
-                        embed = poll['build_embed'](poll)
-                        await interaction.response.edit_message(embed=embed, view=poll['view'])
-                        return
+                # after disabling every non-settings button, update once:
+                await interaction.response.edit_message(embed=embed, view=poll['view'])
+                return
 
             # ─── multiple-vote mode ─────────────────────────────────────
             # ensure we have a list to track this user’s votes
