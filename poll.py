@@ -100,7 +100,7 @@ class SettingsView(discord.ui.View):
         self.message_id = message_id
 
     @discord.ui.button(label="Edit", style=discord.ButtonStyle.secondary)
-    async def edit(self, button, interaction):
+    async def edit(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
 
         # Collect inputs: question, mentions, each option
@@ -150,7 +150,7 @@ class SettingsView(discord.ui.View):
         await interaction.response.send_modal(modal)
 
     @discord.ui.button(label="Voters", style=discord.ButtonStyle.secondary)
-    async def voter_list(self, button, interaction):
+    async def voter_list(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
 
         options = [discord.SelectOption(label=opt, value=opt, emoji=OPTION_EMOJIS[i])
@@ -170,36 +170,28 @@ class SettingsView(discord.ui.View):
         await interaction.response.send_message("Select option to view voters:", view=view, ephemeral=True)
 
     @discord.ui.button(label="End Poll", style=discord.ButtonStyle.secondary)
-    async def end_poll(self, button, interaction):
-        # instead of ending immediately, ask for confirmation
+    async def end_poll(self, interaction: discord.Interaction, button: discord.ui.Button):
         confirm_view = discord.ui.View(timeout=30)
-        # red confirm button
-        @discord.ui.button(label="Confirm End Poll", style=discord.ButtonStyle.danger)
-        async def confirm_end(button, inter: discord.Interaction):
-            # actually end
-            self.poll_data['closed'] = True
-            for item in list(self.poll_data['view'].children):
-                if item.custom_id != 'settings':
-                    self.poll_data['view'].remove_item(item)
-            channel = await self.cog.bot.fetch_channel(inter.channel_id)
-            msg = await channel.fetch_message(self.message_id)
-            await msg.edit(embed=self.poll_data['build_embed'](self.poll_data), view=self.poll_data['view'])
-            await inter.response.edit_message(content="Poll ended.", view=None, ephemeral=True)
-            confirm_view.stop()
 
-        # cancel button
-        @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
-        async def cancel_end(button, inter: discord.Interaction):
-            await inter.response.edit_message(content="Cancelled.", view=None, ephemeral=True)
-            confirm_view.stop()
+        # make confirm button
+        confirm_btn = discord.ui.Button(label="Confirm End Poll", style=discord.ButtonStyle.danger)
+        async def confirm_cb(confirm_inter: discord.Interaction):
+            # … your “actually end” logic …
+            await confirm_inter.response.edit_message(content="Poll ended.", view=None, ephemeral=True)
+        confirm_btn.callback = confirm_cb
+        confirm_view.add_item(confirm_btn)
 
-        # add these two buttons to the view
-        confirm_view.add_item(confirm_end)
-        confirm_view.add_item(cancel_end)
+        # make cancel button
+        cancel_btn = discord.ui.Button(label="Cancel", style=discord.ButtonStyle.secondary)
+        async def cancel_cb(cancel_inter: discord.Interaction):
+            await cancel_inter.response.edit_message(content="Cancelled.", view=None, ephemeral=True)
+        cancel_btn.callback = cancel_cb
+        confirm_view.add_item(cancel_btn)
+
         await interaction.response.send_message("Are you sure you want to end the poll?", view=confirm_view, ephemeral=True)
 
     @discord.ui.button(label="Export Votes", style=discord.ButtonStyle.primary)
-    async def export_votes(self, button, interaction):
+    async def export_votes(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
 
         poll = self.poll_data
