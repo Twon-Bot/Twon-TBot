@@ -122,41 +122,15 @@ async def on_command_error(ctx, error):
 
 @bot.event
 async def on_ready():
-#    if not GUILD_IDS:
-#        print("Warning: No GUILD_IDS found. Slash commands will only sync globally (slow update).")
-#        await bot.tree.sync()
-#    else:
-#        for gid in GUILD_IDS:
-#            guild = discord.Object(id=gid)
-#            bot.tree.copy_global_to(guild=guild)
-#            synced = await bot.tree.sync(guild=guild)
-#            print(f"Synced {len(synced)} slash commands to guild {gid}.")
-
-
-    # ─── CLEAR OUT OLD COMMANDS ───────────────────────────────
-    # first, clear any existing guild‐scoped commands so we remove duplicates
-#    for gid in GUILD_IDS:
-#        guild_obj = discord.Object(id=gid)
-#        bot.tree.clear_commands(guild=guild_obj)
-#        # now sync an empty set → effectively unregisters all old guild commands
-#        await bot.tree.sync(guild=guild_obj)
-#        print(f"Cleared and re-synced commands in guild {gid}.")
-#
-#    # optionally clear global commands too (may take up to 1hr to vanish in Discord UI)
-#    bot.tree.clear_commands(guild=None)
-#    await bot.tree.sync(guild=None)
-#    print("Cleared global commands.")
-
-    # ─── NOW REGISTER CURRENT COMMANDS ────────────────────────
     for gid in GUILD_IDS:
         guild_obj = discord.Object(id=gid)
-        # bring your global slash-commands into this guild
+        # copy global slash-commands into this guild
         bot.tree.copy_global_to(guild=guild_obj)
-        # now sync them
+        # sync them
         synced = await bot.tree.sync(guild=guild_obj)
         print(f"Synced {len(synced)} slash commands to guild {gid}.")
     print("Bot is now ready!")
-    
+
 # Show who uses which command in powershells
 @bot.listen()
 async def on_command(ctx):
