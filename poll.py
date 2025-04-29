@@ -109,9 +109,15 @@ class SettingsView(discord.ui.View):
         end_val = self.poll_data.get('end_time')
         end_default = end_val.strftime("%m/%d %H:%M") if end_val else ""
         modal.add_item(discord.ui.TextInput(label="End Time MM/DD HH:MM", default=end_default, required=False))
-        # existing options
-        for i,opt in enumerate(self.poll_data['options']):
-            modal.add_item(discord.ui.TextInput(label=f"Option {i+1}", default=opt, max_length=100))
+        # all options in one multiline TextInput (one per line)
+        modal.add_item(
+            discord.ui.TextInput(
+                label="Options (one per line)",
+                style=discord.TextInputStyle.paragraph,
+                default="\n".join(self.poll_data['options']),
+                max_length=1000
+            )
+        )
 
         async def on_submit(inner, inter: discord.Interaction):
             vals = inner.children
@@ -131,7 +137,11 @@ class SettingsView(discord.ui.View):
                     return await inter.response.send_message(f"Invalid end time: {e}", ephemeral=True)
             # update options & preserve counts
             old_counts = [self.poll_data['vote_count'].get(o,0) for o in self.poll_data['options']]
-            new_opts = [c.value for c in vals[3:]]
+            # vals[3] is our multiline textarea
+            new_opts = [
+                line.strip() for line in vals[3].value.splitlines() if line.strip()
+            ]
+
             self.poll_data['options'] = new_opts
             self.poll_data['vote_count'] = {opt:(old_counts[i] if i<len(old_counts) else 0) for i,opt in enumerate(new_opts)}
 
@@ -177,6 +187,13 @@ class SettingsView(discord.ui.View):
 
     @discord.ui.button(label="End Poll", style=discord.ButtonStyle.secondary)
     async def end_poll(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # if already closed, just report when it ended
+        if self.poll_data.get('closed'):
+            et = self.poll_data.get('end_time')
+            when = et.strftime("%m/%d %H:%M UTC") if et else "unknown time"
+            return await interaction.response.send_message(
+                f"❌ Poll already ended on {when}.", ephemeral=True
+            )
         # Show confirmation prompt
         confirm_view = discord.ui.View(timeout=30)
 
@@ -203,7 +220,8 @@ class SettingsView(discord.ui.View):
         # ── Cancel button ─────────────────────────────
         cancel_btn = discord.ui.Button(label="Cancel", style=discord.ButtonStyle.secondary)
         async def cancel_cb(cancel_inter: discord.Interaction):
-            await cancel_inter.response.edit_message(content="❌ Cancelled.", view=None, ephemeral=True)
+            # replace prompt with a new ephemeral cancellation notice
+            await cancel_inter.response.send_message("❌ Action cancelled.", ephemeral=True)
             confirm_view.stop()
         cancel_btn.callback = cancel_cb
         confirm_view.add_item(cancel_btn)
@@ -266,7 +284,8 @@ class SettingsView(discord.ui.View):
 
         btn_no = discord.ui.Button(label="Cancel", style=discord.ButtonStyle.secondary)
         async def no_cb(i):
-            await i.response.edit_message(content="❌ Delete cancelled.", view=None, ephemeral=True)
+            # replace prompt with fresh cancellation notice
+            await i.response.send_message("❌ Delete action cancelled.", ephemeral=True)
         btn_no.callback = no_cb
         confirm_view.add_item(btn_no)
 
