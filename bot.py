@@ -122,14 +122,20 @@ async def on_command_error(ctx, error):
 
 @bot.event
 async def on_ready():
-    if not GUILD_IDS:
-        print("Warning: No GUILD_IDS found. Slash commands will only sync globally (slow update).")
-        await bot.tree.sync()
-    else:
+#    if not GUILD_IDS:
+#        print("Warning: No GUILD_IDS found. Slash commands will only sync globally (slow update).")
+#        await bot.tree.sync()
+#    else:
+#        for gid in GUILD_IDS:
+#            guild = discord.Object(id=gid)
+#            bot.tree.copy_global_to(guild=guild)
+#            synced = await bot.tree.sync(guild=guild)
+##### only sync guild-scoped commands, do not copy global commands
+    if GUILD_IDS:
         for gid in GUILD_IDS:
             guild = discord.Object(id=gid)
-            bot.tree.copy_global_to(guild=guild)
             synced = await bot.tree.sync(guild=guild)
+
             print(f"Synced {len(synced)} slash commands to guild {gid}.")
     print("Bot is now ready!")
 
