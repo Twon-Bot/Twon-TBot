@@ -131,19 +131,21 @@ async def on_ready():
 #            bot.tree.copy_global_to(guild=guild)
 #            synced = await bot.tree.sync(guild=guild)
 #            print(f"Synced {len(synced)} slash commands to guild {gid}.")
+
+
     # ─── CLEAR OUT OLD COMMANDS ───────────────────────────────
     # first, clear any existing guild‐scoped commands so we remove duplicates
-    for gid in GUILD_IDS:
-        guild_obj = discord.Object(id=gid)
-        bot.tree.clear_commands(guild=guild_obj)
-        # now sync an empty set → effectively unregisters all old guild commands
-        await bot.tree.sync(guild=guild_obj)
-        print(f"Cleared and re-synced commands in guild {gid}.")
-
-    # optionally clear global commands too (may take up to 1hr to vanish in Discord UI)
-    bot.tree.clear_commands(guild=None)
-    await bot.tree.sync(guild=None)
-    print("Cleared global commands.")
+#    for gid in GUILD_IDS:
+#        guild_obj = discord.Object(id=gid)
+#        bot.tree.clear_commands(guild=guild_obj)
+#        # now sync an empty set → effectively unregisters all old guild commands
+#        await bot.tree.sync(guild=guild_obj)
+#        print(f"Cleared and re-synced commands in guild {gid}.")
+#
+#    # optionally clear global commands too (may take up to 1hr to vanish in Discord UI)
+#    bot.tree.clear_commands(guild=None)
+#    await bot.tree.sync(guild=None)
+#    print("Cleared global commands.")
 
     # ─── NOW REGISTER CURRENT COMMANDS ────────────────────────
     for gid in GUILD_IDS:
