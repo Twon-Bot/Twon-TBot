@@ -101,49 +101,55 @@ class SettingsView(discord.ui.View):
 
     @discord.ui.button(label="Edit", style=discord.ButtonStyle.secondary)
     async def edit(self, interaction: discord.Interaction, button: discord.ui.Button):
-
-        # Collect inputs: question, mentions, each option
+        # Build modal with Question, Mentions, End time, and each Option
         modal = discord.ui.Modal(title="Edit Poll")
-        question_input = discord.ui.TextInput(label="Question", default=self.poll_data['question'], max_length=200)
-        mention_input = discord.ui.TextInput(label="Mentions (e.g. @everyone)", default=self.poll_data.get('mention_text',''), required=False)
-        modal.add_item(question_input)
-        modal.add_item(mention_input)
+        modal.add_item(discord.ui.TextInput(label="Question", default=self.poll_data['question'], max_length=200))
+        modal.add_item(discord.ui.TextInput(label="Mentions (e.g. @everyone)", default=self.poll_data.get('mention_text',''), required=False))
+        # add end_time field (optional)
+        end_val = self.poll_data.get('end_time')
+        end_default = end_val.strftime("%m/%d %H:%M") if end_val else ""
+        modal.add_item(discord.ui.TextInput(label="End Time MM/DD HH:MM", default=end_default, required=False))
+        # existing options
         for i,opt in enumerate(self.poll_data['options']):
             modal.add_item(discord.ui.TextInput(label=f"Option {i+1}", default=opt, max_length=100))
 
         async def on_submit(inner, inter: discord.Interaction):
             vals = inner.children
+            # update question & mentions
             self.poll_data['question'] = vals[0].value
             mention_text = vals[1].value.strip()
             self.poll_data['mention'] = bool(mention_text)
             self.poll_data['mention_text'] = mention_text
-            # Update options but preserve counts
+            # parse new end_time if provided
+            et = vals[2].value.strip()
+            if et:
+                try:
+                    tz = pytz.timezone(await self.cog.get_user_timezone(inter.user.id))
+                    dt = datetime.strptime(et, "%m/%d %H:%M").replace(year=datetime.now(tz).year)
+                    self.poll_data['end_time'] = tz.localize(dt).astimezone(pytz.utc)
+                except Exception as e:
+                    return await inter.response.send_message(f"Invalid end time: {e}", ephemeral=True)
+            # update options & preserve counts
             old_counts = [self.poll_data['vote_count'].get(o,0) for o in self.poll_data['options']]
-            new_opts = [c.value for c in vals[2:]]
+            new_opts = [c.value for c in vals[3:]]
             self.poll_data['options'] = new_opts
-            self.poll_data['vote_count'] = {opt: (old_counts[i] if i < len(old_counts) else 0) for i,opt in enumerate(new_opts)}
+            self.poll_data['vote_count'] = {opt:(old_counts[i] if i<len(old_counts) else 0) for i,opt in enumerate(new_opts)}
 
-            # Rebuild buttons in view
+            # Rebuild view/buttons
             view = self.poll_data['view']
             view.clear_items()
-            # Option buttons
             for i,opt in enumerate(new_opts):
                 btn = discord.ui.Button(label=OPTION_EMOJIS[i], custom_id=opt)
                 btn.callback = self.poll_data['button_callback']
                 view.add_item(btn)
-            # Add plus
-            plus = discord.ui.Button(label="➕", style=discord.ButtonStyle.secondary, custom_id="add_option")
-            plus.callback = self.cog.add_option_callback
-            view.add_item(plus)
-            # Settings button
-            settings = discord.ui.Button(label="⚙️", style=discord.ButtonStyle.secondary, custom_id="settings")
-            settings.callback = self.poll_data['cog'].settings_callback
-            view.add_item(settings)
+            view.add_item(discord.ui.Button(label="➕", style=discord.ButtonStyle.secondary, custom_id="add_option", callback=self.cog.add_option_callback))
+            view.add_item(discord.ui.Button(label="⚙️", style=discord.ButtonStyle.secondary, custom_id="settings", callback=self.cog.settings_callback))
 
+            # apply edits
             channel = await self.cog.bot.fetch_channel(inter.channel_id)
             msg = await channel.fetch_message(self.message_id)
             await msg.edit(embed=self.poll_data['build_embed'](self.poll_data), view=view)
-            await inter.response.send_message("Poll updated.", ephemeral=True)
+            await inter.response.send_message("✅ Poll updated.", ephemeral=True)
 
         modal.on_submit = on_submit
         await interaction.response.send_modal(modal)
@@ -162,7 +168,8 @@ class SettingsView(discord.ui.View):
             voters = [f"<@{uid}>" for uid,v in self.poll_data['user_votes'].items()
                       if (sel in v if isinstance(v,list) else v==sel)]
             text = "No votes yet." if not voters else '\n'.join(voters)
-            await select_inter.response.edit_message(content=f"Voters for {sel}:\n{text}", view=view, ephemeral=True)
+            # send new ephemeral message rather than editing (avoids “interaction failed”)
+            await select_inter.response.send_message(f"Voters for {sel}:\n{text}", ephemeral=True)
 
         select.callback = select_cb
         view.add_item(select)
@@ -180,14 +187,15 @@ class SettingsView(discord.ui.View):
             self.poll_data['closed'] = True
             # 2) disable all non-settings/add_option buttons
             for item in list(self.poll_data['view'].children):
-                if getattr(item, 'custom_id', None) not in ('settings','add_option'):
+                # now disable everything except the settings button
+                if getattr(item, 'custom_id', None) != 'settings':
                     item.disabled = True
             # 3) edit the original poll message
             channel = self.cog.bot.get_channel(self.poll_data['channel_id'])
             poll_msg = await channel.fetch_message(self.message_id)
             await poll_msg.edit(embed=self.poll_data['build_embed'](self.poll_data), view=self.poll_data['view'])
-            # 4) edit the confirmation prompt
-            await confirm_inter.response.edit_message(content="✅ Poll ended.", view=None, ephemeral=True)
+            # 4) send confirmation separately
+            await confirm_inter.response.send_message("✅ Poll ended.", ephemeral=True)
             confirm_view.stop()
         confirm_btn.callback = confirm_cb
         confirm_view.add_item(confirm_btn)
@@ -251,7 +259,8 @@ class SettingsView(discord.ui.View):
             msg = await channel.fetch_message(self.message_id)
             await msg.delete()
             self.cog.polls.pop(self.message_id, None)
-            await i.response.edit_message(content="✅ Poll deleted.", view=None, ephemeral=True)
+            # send a fresh ephemeral reply so the original confirm prompt no longer errors
+            await i.response.send_message("✅ Poll deleted.", ephemeral=True)
         btn_yes.callback = yes_cb
         confirm_view.add_item(btn_yes)
 
@@ -302,12 +311,14 @@ class PollCog(commands.Cog):
         if len(parts) < 3:
             return await ctx.send("Provide question, 2+ options, optionally end time.")
 
-        # Detect end time
+        # Detect end time (allow 1–2 digits for M/D H:M, e.g. "4/9 1:5" or "04/09 01:05")
         end_time = None
-        if re.match(r"^\d{2}/\d{2} \d{2}:\d{2}$", parts[-1]):
+        # match month/day hour:minute with 1 or 2 digits each
+        if re.match(r"^\d{1,2}/\d{1,2} \d{1,2}:\d{1,2}$", parts[-1]):
             try:
                 user_tz_str = await self.get_user_timezone(ctx.author.id)
                 tz = pytz.timezone(user_tz_str)
+                # parse flexible format
                 dt = datetime.strptime(parts[-1], "%m/%d %H:%M").replace(year=datetime.now(tz).year)
                 end_time = tz.localize(dt).astimezone(pytz.utc)
                 parts = parts[:-1]
