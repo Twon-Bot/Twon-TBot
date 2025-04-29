@@ -154,7 +154,8 @@ class SettingsView(discord.ui.View):
         options = [discord.SelectOption(label=opt, value=opt, emoji=OPTION_EMOJIS[i])
                    for i,opt in enumerate(self.poll_data['options'])]
         select = discord.ui.Select(placeholder="Choose option", options=options, custom_id="voter_select")
-        view = discord.ui.View()      # ← move here so callback can close over it
+        view = discord.ui.View()
+        self.poll_data.setdefault('voter_view', view)
 
         async def select_cb(select_inter: discord.Interaction):
             sel = select_inter.data['values'][0]
@@ -494,10 +495,11 @@ class PollCog(commands.Cog):
         roles = [r.name for r in interaction.user.roles]
         if not any(r in roles for r in ('Server Owner','Manager','Moderator','The BotFather')):
             return await interaction.response.send_message("No permission.", ephemeral=True)
-        # Instead of DMing, send the settings view ephemerally in the same channel:
+        settings_view = SettingsView(self, poll, interaction.message.id)
+        self.polls[interaction.message.id]['settings_view'] = settings_view
         await interaction.response.send_message(
             "Poll Settings:",
-            view=SettingsView(self, poll, interaction.message.id),
+            view=settings_view,
             ephemeral=True
         )
         
