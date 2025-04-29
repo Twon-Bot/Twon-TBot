@@ -150,11 +150,10 @@ async def on_ready():
     # ─── NOW REGISTER CURRENT COMMANDS ────────────────────────
     for gid in GUILD_IDS:
         guild_obj = discord.Object(id=gid)
-        # sync current commands into each guild
-    # one-time: clear out any Discord-side commands not in our tree
-    synced = await bot.tree.sync(guild=guild_obj, clear=True)
-    print(f"Synced {len(synced)} slash commands to guild {gid}.")
-    
+        # sync current commands into each guild (no clear=True)
+        synced = await bot.tree.sync(guild=guild_obj)
+        print(f"Synced {len(synced)} slash commands to guild {gid}.")
+
     print("Bot is now ready!")
 
 # Show who uses which command in powershells
