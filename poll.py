@@ -484,6 +484,8 @@ class PollCog(commands.Cog):
                 self.bot.loop.create_task(self.schedule_poll_reminder(msg.id))
             # schedule the actual close
             self.bot.loop.create_task(self.schedule_poll_end(msg.id))
+            # schedule periodic countdown updates (every 60 seconds)
+            self.bot.loop.create_task(self.schedule_countdown_update(msg.id))
 
     async def get_user_timezone(self, user_id):
         """Fetch a user's timezone from Postgres (default UTC)."""
@@ -578,6 +580,26 @@ class PollCog(commands.Cog):
             f"{vote_pending_role.mention} Poll “{poll['question']}” ends in 1 hour—please cast your vote!",
             allowed_mentions=discord.AllowedMentions(roles=True)
         )
+
+    async def schedule_countdown_update(self, message_id):
+        """Periodically refresh the poll embed so the “Time remaining” stays accurate."""
+        poll = self.polls.get(message_id)
+        if not poll or not poll.get('end_time'):
+            return
+        channel = self.bot.get_channel(poll['channel_id'])
+        # loop until poll is closed or time is up
+        while not poll['closed']:
+            now = datetime.utcnow().replace(tzinfo=pytz.utc)
+            # stop once we hit the end-time
+            if poll['end_time'] <= now:
+                break
+            try:
+                msg = await channel.fetch_message(message_id)
+                await msg.edit(embed=poll['build_embed'](poll), view=poll['view'])
+            except Exception:
+                pass
+            # wait one minute before next update
+            await asyncio.sleep(60)
 
     @app_commands.command(name="poll", description="Create a poll via slash")
     @app_commands.describe(
