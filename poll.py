@@ -8,6 +8,10 @@ from datetime import datetime, timedelta
 import pytz
 import re  # for regex matching
 
+# ─── Role IDs for reminders ─────────────────────────────
+PLAYER_ROLE_ID = 1334747903427870742
+VOTE_PENDING_ROLE_ID = 1366303580591755295
+
 # Use numeric keycap emojis for consistent display across platforms
 OPTION_EMOJIS = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"]
 # Shorten bar length to avoid wrapping on mobile
@@ -580,8 +584,8 @@ class PollCog(commands.Cog):
 
         # fetch roles
         guild = channel.guild
-        player_role = guild.get_role(1334747903427870742)
-        vote_pending_role = guild.get_role(1366303580591755295)
+        player_role = guild.get_role(PLAYER_ROLE_ID)
+        vote_pending_role = guild.get_role(VOTE_PENDING_ROLE_ID)
         if not player_role or not vote_pending_role:
             # roles not found → bail
             return
