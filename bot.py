@@ -150,12 +150,13 @@ async def on_ready():
     # ─── NOW REGISTER CURRENT COMMANDS ────────────────────────
     for gid in GUILD_IDS:
         guild_obj = discord.Object(id=gid)
-        # sync current commands into each guild (no clear=True)
+        # bring your global slash-commands into this guild
+        bot.tree.copy_global_to(guild=guild_obj)
+        # now sync them
         synced = await bot.tree.sync(guild=guild_obj)
         print(f"Synced {len(synced)} slash commands to guild {gid}.")
-
     print("Bot is now ready!")
-
+    
 # Show who uses which command in powershells
 @bot.listen()
 async def on_command(ctx):
