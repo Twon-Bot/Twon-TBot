@@ -362,33 +362,19 @@ class PollCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
-        # ensure the polls table exists
+        """Ensure table exists, load saved polls, and schedule their tasks."""
+        # 1) create the table if missing
         await self.bot.pg_pool.execute(
             """
             CREATE TABLE IF NOT EXISTS polls (
-              id           TEXT PRIMARY KEY,
-              data         JSONB       NOT NULL,
-              embed_color  INTEGER     NOT NULL DEFAULT 52479,
-              created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+              id TEXT PRIMARY KEY,
+              data JSONB NOT NULL,
+              embed_color INTEGER NOT NULL DEFAULT 52479,
+              created_at TIMESTAMPTZ NOT NULL DEFAULT now()
             );
             """
         )
-        # now load saved polls
-        rows = await self.bot.pg_pool.fetch("SELECT id, data, embed_color FROM polls")
-        for row in rows:
-            p = json.loads(row["data"])
-            if p.get("end_time"):
-                dt = datetime.fromisoformat(p["end_time"])
-                p["end_time"] = dt if dt.tzinfo else dt.replace(tzinfo=pytz.utc)
-            p["embed_color"] = row["embed_color"]
-            self.polls[p["id"]] = p
-            self.schedule_close(p)
-            if p.get("one_hour_reminder"):
-                self.schedule_one_hour(p)
-
-    @commands.Cog.listener()
-    async def on_ready(self):
-        """Reload polls from Postgres on startup and reschedule their tasks."""
+        # 2) load polls
         rows = await self.bot.pg_pool.fetch("SELECT id, data, embed_color FROM polls")
         for row in rows:
             poll = json.loads(row["data"])
@@ -398,7 +384,7 @@ class PollCog(commands.Cog):
                 poll["end_time"] = dt if dt.tzinfo else dt.replace(tzinfo=pytz.utc)
             poll["embed_color"] = row["embed_color"]
             self.polls[poll["id"]] = poll
-            # reschedule close & reminder
+            # 3) schedule close & one‑hour reminder
             self.schedule_close(poll)
             if poll.get("one_hour_reminder"):
                 self.schedule_one_hour(poll)
@@ -488,14 +474,20 @@ class PollCog(commands.Cog):
             choice = interaction.data['custom_id']
 
             # ─── single-vote mode ───────────────────────────────────────
-            if poll['voting_type'] == 'single':
-                # If they’ve already voted once, pop up an ephemeral confirm dialog
-                if interaction.user.id in poll['user_votes']:
-                    return await interaction.response.send_message(
-                        "You’ve already voted.  Confirm below if you want to change your vote:",
-                        view=ConfirmChangeView(poll, interaction.user.id, interaction.data['custom_id']),
-                        ephemeral=True
-                    )
+            prev = poll['user_votes'].get(interaction.user.id)
+            # if clicking same option, ask to remove
+            if prev == choice:
+                # send a Remove‑Vote confirm view
+                view = RemoveVoteView(poll, interaction.user.id)
+                return await interaction.response.send_message(
+                    "Remove your vote for that option?", view=view, ephemeral=True
+                )
+            # else if different, ask to change
+            if prev:
+                view = ConfirmChangeView(poll, interaction.user.id, choice)
+                return await interaction.response.send_message(
+                    "You’ve already voted—change to this option?", view=view, ephemeral=True
+                )
 
                 # register (or change) their one vote
                 prev = poll['user_votes'].get(uid)
@@ -699,22 +691,22 @@ class PollCog(commands.Cog):
         )
 
     async def schedule_countdown_update(self, message_id):
+        # loop until closed or past end, re-fetching poll each iteration
         while True:
             poll = self.polls.get(message_id)
             if not poll or not poll.get('end_time'):
                 return
             now = datetime.utcnow().replace(tzinfo=pytz.utc)
-            # stop if closed or past end
+            # stop if closed or time’s up
             if poll.get('closed') or poll['end_time'] <= now:
                 break
-            # update embed
             try:
                 channel = self.bot.get_channel(poll['channel_id'])
                 msg = await channel.fetch_message(message_id)
                 await msg.edit(embed=poll['build_embed'](poll), view=poll['view'])
             except Exception:
                 pass
-            # wait one minute
+            # wait one minute before next update
             await asyncio.sleep(60)
 
     @app_commands.command(name="poll", description="Create a poll via slash")
@@ -822,8 +814,36 @@ class ConfirmChangeView(discord.ui.View):
 
     @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.secondary)
     async def cancel(self, interaction, button):
-        # no defer, just send one ephemeral reply
+        # single response: send cancellation
         await interaction.response.send_message("Vote unchanged.", ephemeral=True)
+        self.stop()
+
+class RemoveVoteView(discord.ui.View):
+    def __init__(self, poll: dict, user_id: int, *, timeout: float = 180):
+        super().__init__(timeout=timeout)
+        self.poll = poll
+        self.user_id = user_id
+
+    @discord.ui.button(label="✅ Remove Vote", style=discord.ButtonStyle.danger)
+    async def confirm_remove(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # remove the user's previous vote
+        choice = self.poll["user_votes"].pop(self.user_id, None)
+        if choice is not None:
+            # decrement that option's count
+            self.poll["vote_count"][choice] = max(
+                0, self.poll["vote_count"].get(choice, 1) - 1
+            )
+        # update the embed in the original poll message
+        channel = self.poll["channel_obj"]
+        msg = await channel.fetch_message(self.poll["message_id"])
+        await msg.edit(embed=self.poll["build_embed"](self.poll), view=self.poll["view"])
+        # acknowledge to the user
+        await interaction.response.send_message("Your vote was removed.", ephemeral=True)
+        self.stop()
+
+    @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.secondary)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message("Removal canceled.", ephemeral=True)
         self.stop()
 
 class ColorModal(discord.ui.Modal):
