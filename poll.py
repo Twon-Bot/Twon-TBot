@@ -9,6 +9,7 @@ import pytz
 import re  # for regex matching
 import os
 from dotenv import load_dotenv
+import json
 
 # ─── Role IDs for reminders ─────────────────────────────
 load_dotenv()
@@ -108,6 +109,8 @@ class SettingsView(discord.ui.View):
 
     @discord.ui.button(label="Edit", style=discord.ButtonStyle.secondary)
     async def edit(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+
         # Build modal with Question, Mentions, End time, and each Option
         modal = discord.ui.Modal(title="Edit Poll")
         modal.add_item(discord.ui.TextInput(label="Question", default=self.poll_data['question'], max_length=200))
@@ -180,6 +183,8 @@ class SettingsView(discord.ui.View):
 
     @discord.ui.button(label="Voters", style=discord.ButtonStyle.secondary)
     async def voter_list(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+
         # build option list + final “Not Voted”
         options = [
             discord.SelectOption(label=opt, value=opt, emoji=OPTION_EMOJIS[i])
@@ -226,6 +231,8 @@ class SettingsView(discord.ui.View):
 
     @discord.ui.button(label="End Poll", style=discord.ButtonStyle.secondary)
     async def end_poll(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+
         # if already closed, just report when it ended
         if self.poll_data.get('closed'):
             et = self.poll_data.get('end_time')
@@ -252,6 +259,8 @@ class SettingsView(discord.ui.View):
             await poll_msg.edit(embed=self.poll_data['build_embed'](self.poll_data), view=self.poll_data['view'])
             # 4) send confirmation separately
             await confirm_inter.response.send_message("✅ Poll ended.", ephemeral=True)
+            # ── remove from Postgres so it no longer reloads ────────────
+            await self.bot.pg_pool.execute("DELETE FROM polls WHERE id = $1", self.poll_data["id"])
             confirm_view.stop()
         confirm_btn.callback = confirm_cb
         confirm_view.add_item(confirm_btn)
@@ -274,6 +283,8 @@ class SettingsView(discord.ui.View):
 
     @discord.ui.button(label="Export Votes", style=discord.ButtonStyle.primary)
     async def export_votes(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+
         # immediately replace settings ephemeral with “loading…” 
         await interaction.response.edit_message(content="Preparing CSV…", view=None, ephemeral=True)
 
@@ -307,6 +318,8 @@ class SettingsView(discord.ui.View):
 
     @discord.ui.button(label="Delete", style=discord.ButtonStyle.danger)
     async def delete(self, interaction: discord.Interaction, button):
+        await interaction.response.defer(ephemeral=True)
+
         if interaction.user.id != self.poll_data['author_id']:
             return await interaction.response.send_message("Only creator can delete.", ephemeral=True)
 
@@ -317,6 +330,7 @@ class SettingsView(discord.ui.View):
             msg = await channel.fetch_message(self.message_id)
             await msg.delete()
             self.cog.polls.pop(self.message_id, None)
+            await self.cog.bot.pg_pool.execute("DELETE FROM polls WHERE id = $1", self.poll_data["id"])
             # send a fresh ephemeral reply so the original confirm prompt no longer errors
             await i.response.send_message("✅ Poll deleted.", ephemeral=True)
         btn_yes.callback = yes_cb
@@ -335,10 +349,58 @@ class SettingsView(discord.ui.View):
             ephemeral=True
         )
 
+    @discord.ui.button(label="Color", style=discord.ButtonStyle.primary)
+    async def color(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(ColorModal(self.poll_id))
+
+
 class PollCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.polls = {}
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        # ensure the polls table exists
+        await self.bot.pg_pool.execute(
+            """
+            CREATE TABLE IF NOT EXISTS polls (
+              id           TEXT PRIMARY KEY,
+              data         JSONB       NOT NULL,
+              embed_color  INTEGER     NOT NULL DEFAULT 52479,
+              created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+            );
+            """
+        )
+        # now load saved polls
+        rows = await self.bot.pg_pool.fetch("SELECT id, data, embed_color FROM polls")
+        for row in rows:
+            p = json.loads(row["data"])
+            if p.get("end_time"):
+                dt = datetime.fromisoformat(p["end_time"])
+                p["end_time"] = dt if dt.tzinfo else dt.replace(tzinfo=pytz.utc)
+            p["embed_color"] = row["embed_color"]
+            self.polls[p["id"]] = p
+            self.schedule_close(p)
+            if p.get("one_hour_reminder"):
+                self.schedule_one_hour(p)
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        """Reload polls from Postgres on startup and reschedule their tasks."""
+        rows = await self.bot.pg_pool.fetch("SELECT id, data, embed_color FROM polls")
+        for row in rows:
+            poll = json.loads(row["data"])
+            # rehydrate end_time
+            if poll.get("end_time"):
+                dt = datetime.fromisoformat(poll["end_time"])
+                poll["end_time"] = dt if dt.tzinfo else dt.replace(tzinfo=pytz.utc)
+            poll["embed_color"] = row["embed_color"]
+            self.polls[poll["id"]] = poll
+            # reschedule close & reminder
+            self.schedule_close(poll)
+            if poll.get("one_hour_reminder"):
+                self.schedule_one_hour(poll)
 
     async def _create_poll(
         self,
@@ -412,7 +474,7 @@ class PollCog(commands.Cog):
             embed = discord.Embed(
                 title=f"📊 {data['question']}",
                 description=desc,
-                color=0x39FF14
+                color=data.get('embed_color', 0x00BFFF)  # default bright blue
             )
 
             embed.set_footer(text=f"➕ Add Option | ⚙️ Settings | Created by {data['author']}")
@@ -517,6 +579,19 @@ class PollCog(commands.Cog):
         poll_data['build_embed'] = build_embed
         poll_data['button_callback'] = vote_callback
         self.polls[msg.id] = poll_data
+        # ── persist new poll to Postgres ───────────────────────────
+        await self.bot.pg_pool.execute(
+            """
+            INSERT INTO polls(id, data, embed_color)
+            VALUES($1, $2::jsonb, $3)
+            ON CONFLICT (id) DO UPDATE
+            SET data        = EXCLUDED.data,
+                embed_color = EXCLUDED.embed_color
+            """,
+            msg.id,
+            json.dumps(poll_data, default=lambda o: o.isoformat() if hasattr(o, "isoformat") else o),
+            poll_data.get("embed_color", 0x00BFFF)
+        )
 
         if end_time:
             # schedule the one-hour warning
@@ -729,6 +804,8 @@ class ConfirmChangeView(discord.ui.View):
 
     @discord.ui.button(label="🔄 Change my vote", style=discord.ButtonStyle.primary)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+
         old = self.poll['user_votes'][self.user_id]
         # decrement old, increment new
         self.poll['vote_count'][old] -= 1
@@ -744,8 +821,48 @@ class ConfirmChangeView(discord.ui.View):
 
     @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.secondary)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
         await interaction.response.send_message("🚫 Vote unchanged.", ephemeral=True)
         self.stop()
+
+class ColorModal(discord.ui.Modal):
+    def __init__(self, poll_id):
+        super().__init__(title="Choose embed color")
+        self.poll_id = poll_id
+        self.color_input = discord.ui.TextInput(
+            label="Hex code (#RRGGBB) or name (e.g. RED,PURPLE)",
+            placeholder="#FF00FF"
+        )
+        self.add_item(self.color_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        raw = self.color_input.value.strip().lstrip('#').upper()
+        # map names or hex:
+        names = {"BLUE":"0000FF","GREEN":"00FF00","ORANGE":"FFA500","PINK":"FF00FF","CYAN":"00FFFF"}
+        hexcode = names.get(raw, raw)
+        color_int = int(hexcode, 16)
+        poll = self.view.poll  # however you retrieve it
+        poll['embed_color'] = color_int
+        # ── persist the new color in Postgres ────────────────────────
+        await interaction.client.pg_pool.execute(
+            "UPDATE polls SET embed_color = $1, data = $2::jsonb WHERE id = $3",
+            color_int,
+            json.dumps(poll, default=lambda o: o.isoformat() if hasattr(o, "isoformat") else o),
+            poll["id"]
+        )
+
+        # ── persist new poll data to Postgres ───────────────────────────
+        await interaction.client.pg_pool.execute(
+            # adjust column name if you used `data_json` vs `data`
+            "UPDATE polls SET data = $1::jsonb WHERE id = $2",
+            json.dumps(poll, default=lambda o: o.isoformat() if hasattr(o, "isoformat") else o),
+            poll["id"]
+        )
+
+        # update the visible embed
+        embed = poll['build_embed'](poll)
+        embed.color = color_int
+        await interaction.response.edit_message(embed=embed, view=self.view)
 
 
 async def setup(bot):
