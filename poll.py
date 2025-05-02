@@ -109,7 +109,6 @@ class SettingsView(discord.ui.View):
 
     @discord.ui.button(label="Edit", style=discord.ButtonStyle.secondary)
     async def edit(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer()
 
         # Build modal with Question, Mentions, End time, and each Option
         modal = discord.ui.Modal(title="Edit Poll")
@@ -128,6 +127,7 @@ class SettingsView(discord.ui.View):
                 max_length=1000
             )
         )
+        await interaction.response.send_modal(modal)
 
         async def on_submit(inner, inter: discord.Interaction):
             vals = inner.children
@@ -585,9 +585,15 @@ class PollCog(commands.Cog):
         clean = { k: v for k, v in poll_data.items()
                 if k not in ("view","cog","build_embed","button_callback","settings_view") }
         await self.bot.pg_pool.execute(
-            """INSERT ...""",
+            """
+            INSERT INTO polls(id, data, embed_color)
+            VALUES($1, $2::jsonb, $3)
+            ON CONFLICT (id) DO UPDATE
+            SET data = EXCLUDED.data,
+                embed_color = EXCLUDED.embed_color
+            """,
             msg.id,
-            json.dumps(clean, default=lambda o: o.isoformat() if hasattr(o, "isoformat") else str(o)),
+            json.dumps(poll_data, default=lambda o: o.isoformat() if hasattr(o, "isoformat") else str(o)),
             poll_data.get("embed_color", 0x00BFFF)
         )
 
@@ -799,16 +805,14 @@ class ConfirmChangeView(discord.ui.View):
         self.user_id = user_id
         self.new_choice = new_choice
 
-    @discord.ui.button(label="🔄 Change my vote", style=discord.ButtonStyle.primary)
-    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer(ephemeral=True)
-
+    @discord.ui.button(label=" Change my vote", style=discord.ButtonStyle.primary)
+    async def confirm(self, interaction, button):
+        # directly edit the ephemeral response
         old = self.poll['user_votes'][self.user_id]
-        # decrement old, increment new
         self.poll['vote_count'][old] -= 1
         self.poll['user_votes'][self.user_id] = self.new_choice
-        self.poll['vote_count'][self.new_choice] = self.poll['vote_count'].get(self.new_choice,0) + 1
-        # refresh embed on the shared message
+        self.poll['vote_count'][self.new_choice] = self.poll['vote_count'].get(self.new_choice, 0) + 1
+
         await interaction.response.edit_message(
             embed=self.poll['build_embed'](self.poll),
             view=self.poll['view'],
@@ -817,9 +821,9 @@ class ConfirmChangeView(discord.ui.View):
         self.stop()
 
     @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.secondary)
-    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer(ephemeral=True)
-        await interaction.response.send_message("🚫 Vote unchanged.", ephemeral=True)
+    async def cancel(self, interaction, button):
+        # no defer, just send one ephemeral reply
+        await interaction.response.send_message("Vote unchanged.", ephemeral=True)
         self.stop()
 
 class ColorModal(discord.ui.Modal):
@@ -847,6 +851,12 @@ class ColorModal(discord.ui.Modal):
             if k not in ("view", "cog", "build_embed", "button_callback", "settings_view")
         }
         # ── persist the new color and cleaned data ──────────────────────────
+        # strip non‑serializable bits
+        clean = {
+            k: v
+            for k, v in poll.items()
+            if k not in ("view","cog","build_embed","button_callback","settings_view")
+        }
         await interaction.client.pg_pool.execute(
             "UPDATE polls SET embed_color = $1, data = $2::jsonb WHERE id = $3",
             color_int,
