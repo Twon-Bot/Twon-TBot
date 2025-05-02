@@ -351,7 +351,8 @@ class SettingsView(discord.ui.View):
 
     @discord.ui.button(label="Color", style=discord.ButtonStyle.primary)
     async def color(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(ColorModal(self.poll_id))
+        # pass the live poll_data dict into the modal so it can update embed_color
+        await interaction.response.send_modal(ColorModal(self.poll_data))
 
 
 class PollCog(commands.Cog):
@@ -580,16 +581,13 @@ class PollCog(commands.Cog):
         poll_data['button_callback'] = vote_callback
         self.polls[msg.id] = poll_data
         # ── persist new poll to Postgres ───────────────────────────
+        # strip out non‑serializable bits before saving
+        clean = { k: v for k, v in poll_data.items()
+                if k not in ("view","cog","build_embed","button_callback","settings_view") }
         await self.bot.pg_pool.execute(
-            """
-            INSERT INTO polls(id, data, embed_color)
-            VALUES($1, $2::jsonb, $3)
-            ON CONFLICT (id) DO UPDATE
-            SET data        = EXCLUDED.data,
-                embed_color = EXCLUDED.embed_color
-            """,
+            """INSERT ...""",
             msg.id,
-            json.dumps(poll_data, default=lambda o: o.isoformat() if hasattr(o, "isoformat") else o),
+            json.dumps(clean, default=lambda o: o.isoformat() if hasattr(o, "isoformat") else str(o)),
             poll_data.get("embed_color", 0x00BFFF)
         )
 
@@ -826,9 +824,9 @@ class ConfirmChangeView(discord.ui.View):
         self.stop()
 
 class ColorModal(discord.ui.Modal):
-    def __init__(self, poll_id):
+    def __init__(self, poll_data):
         super().__init__(title="Choose embed color")
-        self.poll_id = poll_id
+        self.poll = poll_data
         self.color_input = discord.ui.TextInput(
             label="Hex code (#RRGGBB) or name (e.g. RED,PURPLE)",
             placeholder="#FF00FF"
