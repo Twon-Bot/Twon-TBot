@@ -571,6 +571,8 @@ class PollCog(commands.Cog):
         poll_data['view'] = view
         poll_data['build_embed'] = build_embed
         poll_data['button_callback'] = vote_callback
+        # Store the ID as a string
+        poll_data['id'] = str(msg.id)
         self.polls[msg.id] = poll_data
         # ── persist new poll to Postgres ───────────────────────────
         # strip out non‑serializable bits before saving
@@ -584,7 +586,7 @@ class PollCog(commands.Cog):
             SET data = EXCLUDED.data,
                 embed_color = EXCLUDED.embed_color
             """,
-            msg.id,
+            str(msg.id),
             json.dumps(poll_data, default=lambda o: o.isoformat() if hasattr(o, "isoformat") else str(o)),
             poll_data.get("embed_color", 0x00BFFF)
         )
