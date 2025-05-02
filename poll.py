@@ -693,23 +693,22 @@ class PollCog(commands.Cog):
         )
 
     async def schedule_countdown_update(self, message_id):
-        """Periodically refresh the poll embed so the “Time remaining” stays accurate."""
-        poll = self.polls.get(message_id)
-        if not poll or not poll.get('end_time'):
-            return
-        channel = self.bot.get_channel(poll['channel_id'])
-        # loop until poll is closed or time is up
-        while not poll['closed']:
+        while True:
+            poll = self.polls.get(message_id)
+            if not poll or not poll.get('end_time'):
+                return
             now = datetime.utcnow().replace(tzinfo=pytz.utc)
-            # stop once we hit the end-time
-            if poll['end_time'] <= now:
+            # stop if closed or past end
+            if poll.get('closed') or poll['end_time'] <= now:
                 break
+            # update embed
             try:
+                channel = self.bot.get_channel(poll['channel_id'])
                 msg = await channel.fetch_message(message_id)
                 await msg.edit(embed=poll['build_embed'](poll), view=poll['view'])
             except Exception:
                 pass
-            # wait one minute before next update
+            # wait one minute
             await asyncio.sleep(60)
 
     @app_commands.command(name="poll", description="Create a poll via slash")
@@ -841,19 +840,24 @@ class ColorModal(discord.ui.Modal):
         color_int = int(hexcode, 16)
         poll = self.view.poll  # however you retrieve it
         poll['embed_color'] = color_int
-        # ── persist the new color in Postgres ────────────────────────
+        # ── strip out non‑serializable entries before saving ─────────────────
+        clean = {
+            k: v
+            for k, v in poll.items()
+            if k not in ("view", "cog", "build_embed", "button_callback", "settings_view")
+        }
+        # ── persist the new color and cleaned data ──────────────────────────
         await interaction.client.pg_pool.execute(
             "UPDATE polls SET embed_color = $1, data = $2::jsonb WHERE id = $3",
             color_int,
-            json.dumps(poll, default=lambda o: o.isoformat() if hasattr(o, "isoformat") else o),
+            json.dumps(clean, default=lambda o: o.isoformat() if hasattr(o, "isoformat") else str(o)),
             poll["id"]
         )
 
-        # ── persist new poll data to Postgres ───────────────────────────
+        # ── persist cleaned data-only (no color change) ─────────────────────
         await interaction.client.pg_pool.execute(
-            # adjust column name if you used `data_json` vs `data`
             "UPDATE polls SET data = $1::jsonb WHERE id = $2",
-            json.dumps(poll, default=lambda o: o.isoformat() if hasattr(o, "isoformat") else o),
+            json.dumps(clean, default=lambda o: o.isoformat() if hasattr(o, "isoformat") else str(o)),
             poll["id"]
         )
 
