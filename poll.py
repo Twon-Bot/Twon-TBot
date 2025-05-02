@@ -392,9 +392,14 @@ class PollCog(commands.Cog):
         def build_embed(data):
             header = ''
             if data['end_time']:
+                # ensure end_time is timezone‑aware in UTC
+                end = data['end_time']
+                if end.tzinfo is None:
+                    end = end.replace(tzinfo=pytz.utc)
+
                 now = datetime.utcnow().replace(tzinfo=pytz.utc)
-                if not data['closed'] and data['end_time']>now:
-                    header = f"⏳ Time remaining: {format_time_delta(data['end_time']-now)}\n\n"
+                if not data['closed'] and end > now:
+                    header = f"⏳ Time remaining: {format_time_delta(end - now)}\n\n"
                 else:
                     header = "❌ Poll closed\n\n"
             desc = header + format_results()
