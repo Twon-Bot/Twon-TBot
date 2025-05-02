@@ -447,9 +447,10 @@ class PollCog(commands.Cog):
                 # exactly one vote total
                 poll['total_votes'] = 1
 
-                # disable all option buttons now that vote is locked
-                # remove all option-buttons and “add option” once poll is over,
-                # leave only the Settings button
+                # ── now update the public embed so they see their vote immediately ────────
+                embed = poll['build_embed'](poll)
+                # disable the other buttons if you wish, or just re‑use poll['view']
+                await interaction.response.edit_message(embed=embed, view=poll['view'])
                 return
 
             # ─── multiple-vote mode ─────────────────────────────────────
@@ -691,6 +692,16 @@ class PollCog(commands.Cog):
 
         ctx = await commands.Context.from_interaction(interaction)
         try:
+            # ── make end_time UTC‑aware using the user’s timezone ─────────────────────────
+            if end_time:
+                # look up the user’s tz (same helper you use in SettingsView)
+                tz = pytz.timezone(await self.get_user_timezone(interaction.user.id))
+                # parse into a naive dt in that zone, then localize → UTC
+                local_dt = datetime.strptime(end_time, "%m/%d %H:%M").replace(year=datetime.now(tz).year)
+                end_time_aware = tz.localize(local_dt).astimezone(pytz.utc)
+            else:
+                end_time_aware = None
+
             await self._create_poll(
                 ctx,
                 question=question,
@@ -699,7 +710,7 @@ class PollCog(commands.Cog):
                 mention_text=mentions or "",
                 multiple=multiple,
                 one_hour_reminder=one_hour_reminder,
-                end_time=datetime.strptime(end_time, "%m/%d %H:%M") if end_time else None
+                end_time=end_time_aware
             )
 
         except Exception as e:
