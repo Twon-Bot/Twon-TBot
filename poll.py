@@ -132,7 +132,9 @@ class SettingsView(discord.ui.View):
             # … (all of your existing on_submit logic here) …
             # after updating poll_data, rebuild embed & view:
             embed = self.poll_data['build_embed'](self.poll_data)
-            await inter.response.edit_message(embed=embed, view=self.poll_data['view'], ephemeral=True)
+            await inter.response.edit_message(embed=self.poll_data['build_embed'](self.poll_data),
+                                            view=self.poll_data['view'],
+                                            ephemeral=True)
 
         modal.on_submit = on_submit
         await interaction.response.send_modal(modal)  # actually show the modal now :contentReference[oaicite:0]{index=0}
@@ -203,40 +205,34 @@ class SettingsView(discord.ui.View):
         view = discord.ui.View(timeout=None)
         select = discord.ui.Select(
             placeholder="Select an option",
-            custom_id="voter_select",  # give it an explicit custom_id
-            options=[discord.SelectOption(label=opt, value=opt) for opt in self.poll_data['options']]
+            options=[discord.SelectOption(label=o, value=o) for o in self.poll_data['options']] + 
+                    [discord.SelectOption(label="All (not voted)", value="__all__")]
         )
-        # bind the callback immediately
         async def select_cb(select_inter: discord.Interaction):
             sel = select.values[0]
-
-            # build the text variable here:
             if sel == "__all__":
-                # “all” means show users who have NOT voted at all
-                # gather everyone who has cast any vote:
-                voted = set(u for lst in self.poll_data["votes"].values() for u in lst)
-                # find those eligible who never voted:
-                non_voters = [u for u in self.poll_data["eligible_users"] if u not in voted]
-                text = "\n".join(non_voters) if non_voters else "Nobody—everyone has voted!"
+                # find everyone who hasn’t voted
+                role = select_inter.guild.get_role(PLAYER_ROLE_ID)
+                not_voted = [m.mention for m in role.members if m.id not in self.poll_data['user_votes']]
+                text = "\n".join(not_voted) if not_voted else "Everyone has voted!"
+                await select_inter.response.edit_message(content=f"Users not voted:\n{text}", view=None, ephemeral=True)
             else:
-                # show the voters for that one option
-                voters = self.poll_data["votes"].get(sel, [])
-                text = "\n".join(voters) if voters else "No one has voted for that option."
-
-            # now text is defined, you can send it:
-            await select_inter.response.edit_message(
-                content=(f"Users not voted:\n{text}" if sel=="__all__"
-                        else f"Voters for {sel}:\n{text}"),
-                view=None,
-                ephemeral=True
-            )
-        select.callback = select_cb
+                voters = [
+                    f"<@{uid}>" 
+                    for uid, v in self.poll_data['user_votes'].items() 
+                    if (isinstance(v, list) and sel in v) or v == sel
+                ]
+                text = "\n".join(voters) if voters else "No votes yet."
+                await select_inter.response.edit_message(content=f"Voters for {sel}:\n{text}", view=None, ephemeral=True)
+        select.callback = select_cb    # ← bind here
         view.add_item(select)
         await interaction.response.edit_message(content="Select option to view voters:", view=view, ephemeral=True)
 
     @discord.ui.button(label="End Poll", style=discord.ButtonStyle.secondary)
     async def end_poll(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
+        # now complete the interaction
+        await interaction.followup.send(content="Preparing to End Poll…", view=None, ephemeral=True)
 
         # if already closed, just report when it ended
         if self.poll_data.get('closed'):
@@ -288,10 +284,9 @@ class SettingsView(discord.ui.View):
 
     @discord.ui.button(label="Export Votes", style=discord.ButtonStyle.primary)
     async def export_votes(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # await interaction.response.defer(ephemeral=True)
-
-        # immediately replace settings ephemeral with “loading…” 
-        await interaction.response.edit_message(content="Preparing CSV…", view=None, ephemeral=True)
+        await interaction.response.defer(ephemeral=True)
+        # now complete the interaction
+        await interaction.followup.send(content="Preparing CSV…", view=None, ephemeral=True)
 
         # Build CSV in memory
         buf = io.StringIO()
@@ -324,6 +319,8 @@ class SettingsView(discord.ui.View):
     @discord.ui.button(label="Delete", style=discord.ButtonStyle.danger)
     async def delete(self, interaction: discord.Interaction, button):
         await interaction.response.defer(ephemeral=True)
+        # now complete the interaction
+        await interaction.followup.send(content="Preparing Delete…", view=None, ephemeral=True)
 
         if interaction.user.id != self.poll_data['author_id']:
             return await interaction.response.send_message("Only creator can delete.", ephemeral=True)
