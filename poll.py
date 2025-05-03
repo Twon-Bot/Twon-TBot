@@ -801,8 +801,8 @@ class ConfirmChangeView(discord.ui.View):
 
     @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.secondary)
     async def cancel(self, interaction, button):
-        # single response: send cancellation
-        await interaction.response.send_message("Vote unchanged.", ephemeral=True)
+        # edit the original ephemeral confirmation prompt
+        await interaction.response.edit_message(content="❌ Vote unchanged.", view=None)
         self.stop()
 
 class RemoveVoteView(discord.ui.View):
@@ -830,8 +830,9 @@ class RemoveVoteView(discord.ui.View):
         self.stop()
 
     @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.secondary)
-    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("Removal canceled.", ephemeral=True)
+    async def cancel(self, interaction, button):
+        # edit the original ephemeral confirmation prompt
+        await interaction.response.edit_message(content="❌ Vote unchanged.", view=None)
         self.stop()
 
 class ColorModal(discord.ui.Modal):
