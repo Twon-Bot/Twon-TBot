@@ -917,11 +917,11 @@ class ColorModal(discord.ui.Modal):
         )
 
         # 2) edit the public poll message embed (so everyone sees the new color)
-        channel = interaction.client.bot.get_channel(poll['channel_id'])
+        channel = interaction.client.get_channel(poll['channel_id'])
         msg = await channel.fetch_message(int(poll["id"]))
         embed = poll['build_embed'](poll)
         embed.color = color_int
-        await msg.edit(embed=embed, view=poll['settings_view'])
+        await msg.edit(embed=embed, view=poll['view'])
 
         # 3) send one follow‑up in the modal thread to confirm success
         await interaction.followup.send("✅ Embed color updated.", ephemeral=True)
