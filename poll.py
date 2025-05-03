@@ -369,6 +369,33 @@ class PollCog(commands.Cog):
                 poll["end_time"] = dt if dt.tzinfo else dt.replace(tzinfo=pytz.utc)
             poll["embed_color"] = row["embed_color"]
             self.polls[poll["id"]] = poll
+
+            # ── Rebuild main voting View ─────────────────────────────────────────────
+            from discord.ui import View, Button
+            main_view = View(timeout=None)
+            # Option buttons
+            for i, opt in enumerate(poll["options"]):
+                btn = Button(label=OPTION_EMOJIS[i], custom_id=opt)
+                btn.callback = self.polls[poll["id"]]['button_callback']
+                main_view.add_item(btn)
+            # Add‑option
+            plus = Button(label="➕", style=discord.ButtonStyle.secondary, custom_id="add_option")
+            plus.callback = self.add_option_callback
+            main_view.add_item(plus)
+            # Settings
+            settings_btn = Button(label="⚙️", style=discord.ButtonStyle.secondary, custom_id="settings")
+            settings_btn.callback = self.settings_callback
+            main_view.add_item(settings_btn)
+
+            # Tell discord.py to listen for interactions on that view, for that message
+            self.bot.add_view(main_view, message_id=int(poll["id"]))
+            poll["view"] = main_view
+
+            # ── Rebuild SettingsView ────────────────────────────────────────────────────
+            settings_view = SettingsView(self, poll, message_id=int(poll["id"]))
+            self.bot.add_view(settings_view, message_id=int(poll["id"]))
+            poll["settings_view"] = settings_view
+
             # 3) schedule close & one‑hour reminder
             self.bot.loop.create_task(self.schedule_poll_end(poll['id']))
             if poll.get("one_hour_reminder"):
