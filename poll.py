@@ -107,7 +107,7 @@ class SettingsView(discord.ui.View):
         self.poll_data = poll_data
         self.message_id = message_id
 
-    @discord.ui.button(label="Edit", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="Edit", style=discord.ButtonStyle.primary)
     async def edit(self, interaction: discord.Interaction, button: discord.ui.Button):
         # Build modal with Question, Mentions, End time, and each Option
         modal = discord.ui.Modal(title="Edit Poll")
@@ -179,7 +179,7 @@ class SettingsView(discord.ui.View):
         modal.on_submit = on_submit
         await interaction.response.send_modal(modal)
 
-    @discord.ui.button(label="Voters", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="Voters", style=discord.ButtonStyle.primary)
     async def voter_list(self, interaction: discord.Interaction, button: discord.ui.Button):
 
         # build option list + final “Not Voted”
@@ -215,7 +215,7 @@ class SettingsView(discord.ui.View):
         view.add_item(select)
         await interaction.response.send_message(content="Select option to view voters:", view=view, ephemeral=True)
 
-    @discord.ui.button(label="End Poll", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="End Poll", style=discord.ButtonStyle.primary)
     async def end_poll(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
         # now complete the interaction
