@@ -662,12 +662,17 @@ class PollCog(commands.Cog):
             return
 
         # assign @Vote_Pending to every @Player who hasn't voted
-        for member in player_role.members:
-            if member.id not in poll['user_votes']:
-                try:
-                    await member.add_roles(vote_pending_role, reason="Poll reminder: please vote")
-                except:
-                    pass
+        # ensure we have up‑to‑date member list
+        members = await guild.fetch_members(limit=None).flatten()
+        for member in members:
+            # only consider members who have the PLAYER role
+            if player_role in member.roles:
+                # and who haven’t voted yet
+                if member.id not in poll['user_votes']:
+                    try:
+                        await member.add_roles(vote_pending_role, reason="Poll reminder: please vote")
+                    except:
+                        pass
 
         # send a reminder ping
         await channel.send(
