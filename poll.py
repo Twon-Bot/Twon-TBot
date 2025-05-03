@@ -109,7 +109,6 @@ class SettingsView(discord.ui.View):
 
     @discord.ui.button(label="Edit", style=discord.ButtonStyle.secondary)
     async def edit(self, interaction: discord.Interaction, button: discord.ui.Button):
-
         # Build modal with Question, Mentions, End time, and each Option
         modal = discord.ui.Modal(title="Edit Poll")
         modal.add_item(discord.ui.TextInput(label="Question", default=self.poll_data['question'], max_length=200))
@@ -127,7 +126,16 @@ class SettingsView(discord.ui.View):
                 max_length=1000
             )
         )
-        await interaction.response.send_modal(modal)
+        # wire up on_submit before sending
+        async def on_submit(inner, inter: discord.Interaction):
+            vals = inner.children
+            # … (all of your existing on_submit logic here) …
+            # after updating poll_data, rebuild embed & view:
+            embed = self.poll_data['build_embed'](self.poll_data)
+            await inter.response.edit_message(embed=embed, view=self.poll_data['view'], ephemeral=True)
+
+        modal.on_submit = on_submit
+        await interaction.response.send_modal(modal)  # actually show the modal now :contentReference[oaicite:0]{index=0}
 
         async def on_submit(inner, inter: discord.Interaction):
             vals = inner.children
@@ -192,41 +200,38 @@ class SettingsView(discord.ui.View):
         ]
         options.append(discord.SelectOption(label="Not Voted", value="__NOT_VOTED__"))
         
-        select = discord.ui.Select(placeholder="Choose option", options=options, custom_id="voter_select")
-        view = discord.ui.View()
-        view.add_item(select)
-
+        view = discord.ui.View(timeout=None)
+        select = discord.ui.Select(
+            placeholder="Select an option",
+            custom_id="voter_select",  # give it an explicit custom_id
+            options=[discord.SelectOption(label=opt, value=opt) for opt in self.poll_data['options']]
+        )
+        # bind the callback immediately
         async def select_cb(select_inter: discord.Interaction):
-            sel = select_inter.data['values'][0]
-            if sel == "__NOT_VOTED__":
-                # list all members with PLAYER_ROLE_ID who haven't voted
-                guild = select_inter.guild
-                role = guild.get_role(PLAYER_ROLE_ID)
-                not_voted = [
-                    f"<@{m.id}>" for m in role.members
-                    if m.id not in self.poll_data['user_votes']
-                ]
-                text = "Everyone has voted!" if not not_voted else "\n".join(not_voted)
-                # replace the settings ephemeral with this new one
-                await select_inter.response.edit_message(
-                    content=f"Users not voted:\n{text}",
-                    view=None,
-                    ephemeral=True
-                )
-            else:
-                voters = [
-                    f"<@{uid}>" for uid,v in self.poll_data['user_votes'].items()
-                    if (sel in v if isinstance(v,list) else v==sel)
-                ]
-                text = "No votes yet." if not voters else '\n'.join(voters)
-                await select_inter.response.edit_message(
-                    content=f"Voters for {sel}:\n{text}",
-                    view=None,
-                    ephemeral=True
-                )
+            sel = select.values[0]
 
+            # build the text variable here:
+            if sel == "__all__":
+                # “all” means show users who have NOT voted at all
+                # gather everyone who has cast any vote:
+                voted = set(u for lst in self.poll_data["votes"].values() for u in lst)
+                # find those eligible who never voted:
+                non_voters = [u for u in self.poll_data["eligible_users"] if u not in voted]
+                text = "\n".join(non_voters) if non_voters else "Nobody—everyone has voted!"
+            else:
+                # show the voters for that one option
+                voters = self.poll_data["votes"].get(sel, [])
+                text = "\n".join(voters) if voters else "No one has voted for that option."
+
+            # now text is defined, you can send it:
+            await select_inter.response.edit_message(
+                content=(f"Users not voted:\n{text}" if sel=="__all__"
+                        else f"Voters for {sel}:\n{text}"),
+                view=None,
+                ephemeral=True
+            )
         select.callback = select_cb
-        # replace settings ephemeral
+        view.add_item(select)
         await interaction.response.edit_message(content="Select option to view voters:", view=view, ephemeral=True)
 
     @discord.ui.button(label="End Poll", style=discord.ButtonStyle.secondary)
@@ -283,7 +288,7 @@ class SettingsView(discord.ui.View):
 
     @discord.ui.button(label="Export Votes", style=discord.ButtonStyle.primary)
     async def export_votes(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer(ephemeral=True)
+        # await interaction.response.defer(ephemeral=True)
 
         # immediately replace settings ephemeral with “loading…” 
         await interaction.response.edit_message(content="Preparing CSV…", view=None, ephemeral=True)
@@ -864,7 +869,7 @@ class ColorModal(discord.ui.Modal):
         names = {"BLUE":"0000FF","GREEN":"00FF00","ORANGE":"FFA500","PINK":"FF00FF","CYAN":"00FFFF"}
         hexcode = names.get(raw, raw)
         color_int = int(hexcode, 16)
-        poll = self.view.poll  # however you retrieve it
+        poll = self.poll  # use the poll_data we stored in __init__
         poll['embed_color'] = color_int
         # ── strip out non‑serializable entries before saving ─────────────────
         clean = {
