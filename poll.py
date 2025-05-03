@@ -883,10 +883,30 @@ class ColorModal(discord.ui.Modal):
         await interaction.response.defer()
 
         raw = self.color_input.value.strip().lstrip('#').upper()
-        # map names or hex:
-        names = {"BLUE":"0000FF","GREEN":"00FF00","ORANGE":"FFA500","PINK":"FF00FF","CYAN":"00FFFF"}
-        hexcode = names.get(raw, raw)
+        # map of names → hex (you can add more as you like)
+        names = {
+            "RED":    "FF0000",
+            "ORANGE": "FFA500",
+            "BLUE":   "0000FF",
+            "GREEN":  "00FF00",
+            "PINK":   "FF00FF",
+            "CYAN":   "00FFFF"
+        }
+
+        # decide whether this is a named colour or a hex code
+        if raw in names:
+            hexcode = names[raw]
+        elif len(raw) == 6 and all(c in "0123456789ABCDEF" for c in raw):
+            hexcode = raw
+        else:
+            await interaction.followup.send(
+                "❌ Invalid colour. Please enter a hex code like `#FFA500` or a name like `RED`.",
+                ephemeral=True
+            )
+            return
+
         color_int = int(hexcode, 16)
+
         poll = self.poll  # use the poll_data we stored in __init__
         poll['embed_color'] = color_int
         # ── strip out non‑serializable entries before saving ─────────────────
