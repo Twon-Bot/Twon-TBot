@@ -879,6 +879,9 @@ class ColorModal(discord.ui.Modal):
         self.add_item(self.color_input)
 
     async def on_submit(self, interaction: discord.Interaction):
+        # 1) defer so we don’t hit the 3s timeout while updating DB & editing the embed
+        await interaction.response.defer()
+
         raw = self.color_input.value.strip().lstrip('#').upper()
         # map names or hex:
         names = {"BLUE":"0000FF","GREEN":"00FF00","ORANGE":"FFA500","PINK":"FF00FF","CYAN":"00FFFF"}
@@ -913,10 +916,15 @@ class ColorModal(discord.ui.Modal):
             poll["id"]
         )
 
-        # update the visible embed using the stored SettingsView
+        # 2) edit the public poll message embed (so everyone sees the new color)
+        channel = interaction.client.bot.get_channel(poll['channel_id'])
+        msg = await channel.fetch_message(int(poll["id"]))
         embed = poll['build_embed'](poll)
         embed.color = color_int
-        await interaction.response.edit_message(embed=embed, view=poll['settings_view'])
+        await msg.edit(embed=embed, view=poll['settings_view'])
+
+        # 3) send one follow‑up in the modal thread to confirm success
+        await interaction.followup.send("✅ Embed color updated.", ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(PollCog(bot))
