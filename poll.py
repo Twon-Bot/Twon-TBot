@@ -895,10 +895,10 @@ class ColorModal(discord.ui.Modal):
             poll["id"]
         )
 
-        # update the visible embed
+        # update the visible embed using the stored SettingsView
         embed = poll['build_embed'](poll)
         embed.color = color_int
-        await interaction.response.edit_message(embed=embed, view=self.view)
+        await interaction.response.edit_message(embed=embed, view=poll['settings_view'])
 
 async def setup(bot):
     await bot.add_cog(PollCog(bot))
