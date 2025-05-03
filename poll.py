@@ -309,7 +309,7 @@ class SettingsView(discord.ui.View):
             return await interaction.followup.send("Only creator can delete.", ephemeral=True)
 
         confirm_view = discord.ui.View(timeout=30)
-        btn_yes = discord.ui.Button(label="Confirm Delete", style=discord.ButtonStyle.success)
+        btn_yes = discord.ui.Button(label="Confirm Delete", style=discord.ButtonStyle.danger)
         async def yes_cb(i):
             channel = self.cog.bot.get_channel(self.poll_data['channel_id'])
             msg = await channel.fetch_message(self.message_id)
@@ -334,7 +334,7 @@ class SettingsView(discord.ui.View):
             ephemeral=True
         )
 
-    @discord.ui.button(label="Color", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="Color", style=discord.ButtonStyle.success)
     async def color(self, interaction: discord.Interaction, button: discord.ui.Button):
         # pass the live poll_data dict into the modal so it can update embed_color
         await interaction.response.send_modal(ColorModal(self.poll_data))
