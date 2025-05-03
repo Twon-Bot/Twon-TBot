@@ -786,17 +786,23 @@ class ConfirmChangeView(discord.ui.View):
 
     @discord.ui.button(label="Change my vote", style=discord.ButtonStyle.danger)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # decrement old vote
+        # 1) Update the poll data
         old = self.poll['user_votes'][self.user_id]
         self.poll['vote_count'][old] -= 1
-        # assign new vote
         self.poll['user_votes'][self.user_id] = self.new_choice
         self.poll['vote_count'][self.new_choice] = self.poll['vote_count'].get(self.new_choice, 0) + 1
 
-        # re‑render the embed with updated counts
+        # 2) Rebuild the embed
         embed = self.poll['build_embed'](self.poll)
-        # edit the original ephemeral message (no ephemeral flag here)
-        await interaction.response.edit_message(embed=embed, view=self.poll['view'])
+
+        # 3) Edit the public poll message
+        channel = interaction.guild.get_channel(self.poll['channel_id'])
+        msg = await channel.fetch_message(int(self.poll['id']))
+        await msg.edit(embed=embed, view=self.poll['view'])
+
+        # 4) Edit the ephemeral confirmation prompt (replace “change?” with “✅ Vote changed.”)
+        await interaction.response.edit_message(content="✅ Your vote has been changed.", view=None)
+
         self.stop()
 
     @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.secondary)
