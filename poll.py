@@ -304,7 +304,7 @@ class SettingsView(discord.ui.View):
     @discord.ui.button(label="Delete", style=discord.ButtonStyle.danger)
     async def delete(self, interaction: discord.Interaction, button):
         # no defer - open confirm view immediately
-        
+
         if interaction.user.id != self.poll_data['author_id']:
             return await interaction.followup.send("Only creator can delete.", ephemeral=True)
 
@@ -779,19 +779,19 @@ class ConfirmChangeView(discord.ui.View):
         self.user_id = user_id
         self.new_choice = new_choice
 
-    @discord.ui.button(label=" Change my vote", style=discord.ButtonStyle.primary)
-    async def confirm(self, interaction, button):
-        # directly edit the ephemeral response
+    @discord.ui.button(label="Change my vote", style=discord.ButtonStyle.danger)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # decrement old vote
         old = self.poll['user_votes'][self.user_id]
         self.poll['vote_count'][old] -= 1
+        # assign new vote
         self.poll['user_votes'][self.user_id] = self.new_choice
         self.poll['vote_count'][self.new_choice] = self.poll['vote_count'].get(self.new_choice, 0) + 1
 
-        await interaction.response.edit_message(
-            embed=self.poll['build_embed'](self.poll),
-            view=self.poll['view'],
-            ephemeral=True
-        )
+        # re‑render the embed with updated counts
+        embed = self.poll['build_embed'](self.poll)
+        # edit the original ephemeral message (no ephemeral flag here)
+        await interaction.response.edit_message(embed=embed, view=self.poll['view'])
         self.stop()
 
     @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.secondary)
