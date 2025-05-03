@@ -900,7 +900,6 @@ class ColorModal(discord.ui.Modal):
         embed.color = color_int
         await interaction.response.edit_message(embed=embed, view=self.view)
 
-
 async def setup(bot):
     await bot.add_cog(PollCog(bot))
     print("Loaded PollCog!")
