@@ -959,7 +959,8 @@ class ColorModal(discord.ui.Modal):
         await msg.edit(embed=embed, view=poll['view'])
 
         # 3) send one follow‑up in the modal thread to confirm success
-        await interaction.message.edit(view=None)  # this removes the buttons
+        if interaction.message:
+            await interaction.message.edit(view=None)  # this removes the buttons
         await interaction.followup.send("✅ Embed color updated.", ephemeral=True)
 
 async def setup(bot):
