@@ -885,12 +885,27 @@ class ColorModal(discord.ui.Modal):
         raw = self.color_input.value.strip().lstrip('#').upper()
         # map of names → hex (you can add more as you like)
         names = {
-            "RED":    "FF0000",
-            "ORANGE": "FFA500",
-            "BLUE":   "0000FF",
-            "GREEN":  "00FF00",
-            "PINK":   "FF00FF",
-            "CYAN":   "00FFFF"
+            "RED":       "FF0000",
+            "ORANGE":    "FFA500",
+            "YELLOW":    "FFFF00",
+            "LIME":      "BFFF00",
+            "GREEN":     "00FF00",
+            "TEAL":      "008080",
+            "CYAN":      "00FFFF",
+            "SKY":       "87CEEB",
+            "BLUE":      "0000FF",
+            "NAVY":      "000080",
+            "PURPLE":    "800080",
+            "VIOLET":    "EE82EE",
+            "PINK":      "FF00FF",
+            "MAGENTA":   "FF00FF",
+            "FUCHSIA":   "FF77FF",
+            "BROWN":     "8B4513",
+            "BLACK":     "000000",
+            "GRAY":      "808080",
+            "WHITE":     "FFFFFF",
+            "GOLD":      "FFD700",
+            "SILVER":    "C0C0C0"
         }
 
         # decide whether this is a named colour or a hex code
