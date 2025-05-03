@@ -309,7 +309,7 @@ class SettingsView(discord.ui.View):
             return await interaction.followup.send("Only creator can delete.", ephemeral=True)
 
         confirm_view = discord.ui.View(timeout=30)
-        btn_yes = discord.ui.Button(label="Confirm Delete", style=discord.ButtonStyle.danger)
+        btn_yes = discord.ui.Button(label="Confirm Delete", style=discord.ButtonStyle.success)
         async def yes_cb(i):
             channel = self.cog.bot.get_channel(self.poll_data['channel_id'])
             msg = await channel.fetch_message(self.message_id)
