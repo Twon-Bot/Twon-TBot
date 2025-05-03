@@ -126,19 +126,7 @@ class SettingsView(discord.ui.View):
                 max_length=1000
             )
         )
-        # wire up on_submit before sending
-        async def on_submit(inner, inter: discord.Interaction):
-            vals = inner.children
-            # … (all of your existing on_submit logic here) …
-            # after updating poll_data, rebuild embed & view:
-            embed = self.poll_data['build_embed'](self.poll_data)
-            await inter.response.edit_message(embed=self.poll_data['build_embed'](self.poll_data),
-                                            view=self.poll_data['view'],
-                                            ephemeral=True)
-
-        modal.on_submit = on_submit
-        await interaction.response.send_modal(modal)  # actually show the modal now :contentReference[oaicite:0]{index=0}
-
+        # define exactly one on_submit handler
         async def on_submit(inner, inter: discord.Interaction):
             vals = inner.children
             # update question & mentions
@@ -193,7 +181,6 @@ class SettingsView(discord.ui.View):
 
     @discord.ui.button(label="Voters", style=discord.ButtonStyle.secondary)
     async def voter_list(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer()
 
         # build option list + final “Not Voted”
         options = [
@@ -226,7 +213,7 @@ class SettingsView(discord.ui.View):
                 await select_inter.response.edit_message(content=f"Voters for {sel}:\n{text}", view=None, ephemeral=True)
         select.callback = select_cb    # ← bind here
         view.add_item(select)
-        await interaction.response.edit_message(content="Select option to view voters:", view=view, ephemeral=True)
+        await interaction.response.send_message(content="Select option to view voters:", view=view, ephemeral=True)
 
     @discord.ui.button(label="End Poll", style=discord.ButtonStyle.secondary)
     async def end_poll(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -238,7 +225,7 @@ class SettingsView(discord.ui.View):
         if self.poll_data.get('closed'):
             et = self.poll_data.get('end_time')
             when = et.strftime("%m/%d %H:%M UTC") if et else "unknown time"
-            return await interaction.response.send_message(
+            return await interaction.followup.send(
                 f"❌ Poll already ended on {when}.", ephemeral=True
             )
         # Show confirmation prompt
@@ -284,9 +271,7 @@ class SettingsView(discord.ui.View):
 
     @discord.ui.button(label="Export Votes", style=discord.ButtonStyle.primary)
     async def export_votes(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer(ephemeral=True)
-        # now complete the interaction
-        await interaction.followup.send(content="Preparing CSV…", view=None, ephemeral=True)
+        # no defer — respond immediately with file
 
         # Build CSV in memory
         buf = io.StringIO()
@@ -314,14 +299,12 @@ class SettingsView(discord.ui.View):
         discord_file = discord.File(fp=io.BytesIO(buf.getvalue().encode()), filename="poll_export.csv")
 
         # edit the same ephemeral to include the file
-        await interaction.followup.send(file=discord_file, ephemeral=True)
+        await interaction.response.send_message(file=discord_file, ephemeral=True)
 
     @discord.ui.button(label="Delete", style=discord.ButtonStyle.danger)
     async def delete(self, interaction: discord.Interaction, button):
-        await interaction.response.defer(ephemeral=True)
-        # now complete the interaction
-        await interaction.followup.send(content="Preparing Delete…", view=None, ephemeral=True)
-
+        # no defer - open confirm view immediately
+        
         if interaction.user.id != self.poll_data['author_id']:
             return await interaction.followup.send("Only creator can delete.", ephemeral=True)
 
@@ -511,7 +494,6 @@ class PollCog(commands.Cog):
                 return
 
             # ─── multiple-vote mode ─────────────────────────────────────
-            # ensure we have a list to track this user’s votes
             user_list = poll['user_votes'].setdefault(uid, [])
 
             if choice in user_list:
@@ -577,7 +559,6 @@ class PollCog(commands.Cog):
         poll_data['id'] = str(msg.id)
         self.polls[msg.id] = poll_data
         # ── persist new poll to Postgres ───────────────────────────
-        # strip out non‑serializable bits before saving
         clean = { k: v for k, v in poll_data.items()
                 if k not in ("view","cog","build_embed","button_callback","settings_view") }
         await self.bot.pg_pool.execute(
@@ -788,11 +769,8 @@ class PollCog(commands.Cog):
             )
 
         except Exception as e:
-            # send the exception so you can debug
             await interaction.followup.send(f"🚨 Poll creation error: {e}", ephemeral=True)
-            # re-raise if you want it in your logs
             raise
-        # (no additional defer/response needed— your poll command has already sent!)
 
 class ConfirmChangeView(discord.ui.View):
     def __init__(self, poll, user_id, new_choice):
