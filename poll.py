@@ -261,7 +261,7 @@ class SettingsView(discord.ui.View):
             # 4) send confirmation separately
             await confirm_inter.response.send_message("✅ Poll ended.", ephemeral=True)
             # ── remove from Postgres so it no longer reloads ────────────
-            await self.bot.pg_pool.execute("DELETE FROM polls WHERE id = $1", self.poll_data["id"])
+            await self.cog.bot.pg_pool.execute("DELETE FROM polls WHERE id = $1", self.poll_data["id"])
             confirm_view.stop()
         confirm_btn.callback = confirm_cb
         confirm_view.add_item(confirm_btn)
@@ -323,7 +323,7 @@ class SettingsView(discord.ui.View):
         await interaction.followup.send(content="Preparing Delete…", view=None, ephemeral=True)
 
         if interaction.user.id != self.poll_data['author_id']:
-            return await interaction.response.send_message("Only creator can delete.", ephemeral=True)
+            return await interaction.followup.send("Only creator can delete.", ephemeral=True)
 
         confirm_view = discord.ui.View(timeout=30)
         btn_yes = discord.ui.Button(label="Confirm Delete", style=discord.ButtonStyle.danger)
@@ -387,9 +387,9 @@ class PollCog(commands.Cog):
             poll["embed_color"] = row["embed_color"]
             self.polls[poll["id"]] = poll
             # 3) schedule close & one‑hour reminder
-            self.schedule_close(poll)
+            self.bot.loop.create_task(self.schedule_poll_end(poll['id']))
             if poll.get("one_hour_reminder"):
-                self.schedule_one_hour(poll)
+                self.bot.loop.create_task(self.schedule_poll_reminder(poll['id']))
 
     async def _create_poll(
         self,
@@ -838,8 +838,9 @@ class RemoveVoteView(discord.ui.View):
                 0, self.poll["vote_count"].get(choice, 1) - 1
             )
         # update the embed in the original poll message
-        channel = self.poll["channel_obj"]
-        msg = await channel.fetch_message(self.poll["message_id"])
+        channel = interaction.guild.get_channel(self.poll["channel_id"])
+        msg     = await channel.fetch_message(self.poll["id"])
+        
         await msg.edit(embed=self.poll["build_embed"](self.poll), view=self.poll["view"])
         # acknowledge to the user
         await interaction.response.send_message("Your vote was removed.", ephemeral=True)
