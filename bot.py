@@ -25,6 +25,7 @@ TEST_ANNOUNCEMENT_CHANNEL_ID = int(os.getenv("TEST_ANNOUNCEMENT_CHANNEL_ID", 0))
 # Set up the bot
 intents = discord.Intents.default()
 intents.message_content = True
+intents.members = True
 bot = commands.Bot(command_prefix="!!", intents=intents, case_insensitive=True, help_command=None)
 
 class Database:
