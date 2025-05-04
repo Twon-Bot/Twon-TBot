@@ -690,7 +690,7 @@ class PollCog(commands.Cog):
 
         # assign @Vote_Pending to every @Player who hasn't voted
         # ensure we have up‑to‑date member list
-        members = await guild.fetch_members(limit=None).flatten()
+        members = [member async for member in guild.fetch_members(limit=None)]
         for member in members:
             # only consider members who have the PLAYER role
             if player_role in member.roles:
@@ -806,30 +806,32 @@ class PollCog(commands.Cog):
 
 class ConfirmChangeView(discord.ui.View):
     def __init__(self, poll, user_id, new_choice):
-        super().__init__(timeout=30)
+        super().__init__(timeout=60)
         self.poll = poll
         self.user_id = user_id
         self.new_choice = new_choice
 
-    @discord.ui.button(label="Change my vote", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="Change Vote", style=discord.ButtonStyle.primary)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # 1) Update the poll data
-        old = self.poll['user_votes'][self.user_id]
-        self.poll['vote_count'][old] -= 1
+        # 1) remove old vote
+        prev = self.poll['user_votes'].get(self.user_id)
+        if prev:
+            self.poll['vote_count'][prev] -= 1
+
+        # 2) set new vote
         self.poll['user_votes'][self.user_id] = self.new_choice
-        self.poll['vote_count'][self.new_choice] = self.poll['vote_count'].get(self.new_choice, 0) + 1
+        self.poll['vote_count'][self.new_choice] = (
+            self.poll['vote_count'].get(self.new_choice, 0) + 1
+        )
+        # 3) recompute totals if you display percentages
+        self.poll['total_votes'] = sum(self.poll['vote_count'].values())
 
-        # 2) Rebuild the embed
-        embed = self.poll['build_embed'](self.poll)
-
-        # 3) Edit the public poll message
+        # 4) update the original message
         channel = interaction.guild.get_channel(self.poll['channel_id'])
-        msg = await channel.fetch_message(int(self.poll['id']))
-        await msg.edit(embed=embed, view=self.poll['view'])
+        msg = await channel.fetch_message(self.poll['id'])
+        await msg.edit(embed=self.poll['build_embed'](self.poll), view=self.poll['view'])
 
-        # 4) Edit the ephemeral confirmation prompt (replace “change?” with “✅ Vote changed.”)
-        await interaction.response.edit_message(content="✅ Your vote has been changed.", view=None)
-
+        await interaction.response.send_message("✅ Vote changed.", ephemeral=True)
         self.stop()
 
     @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.secondary)
