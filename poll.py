@@ -518,6 +518,13 @@ class PollCog(commands.Cog):
                 embed = poll['build_embed'](poll)
                 # disable the other buttons if you wish, or just re‑use poll['view']
                 await interaction.response.edit_message(embed=embed, view=poll['view'])
+                # ── remove pending role once they’ve voted ─────────────────
+                vote_pending = discord.utils.get(interaction.user.roles, id=VOTE_PENDING_ROLE_ID)
+                if vote_pending:
+                    try:
+                        await interaction.user.remove_roles(vote_pending, reason="Voted in poll")
+                    except Exception:
+                        pass
                 return
 
             # ─── multiple-vote mode ─────────────────────────────────────
@@ -788,6 +795,14 @@ class PollCog(commands.Cog):
                 end_time_aware = tz.localize(local_dt).astimezone(pytz.utc)
             else:
                 end_time_aware = None
+
+            # ── ensure end time is in the future ───────────────────────
+            if end_time_aware is not None:
+                now_utc = datetime.utcnow().replace(tzinfo=pytz.utc)
+                if end_time_aware <= now_utc:
+                    return await interaction.followup.send(
+                        "🚨 You must pick an end time in the future.", ephemeral=True
+                    )
 
             await self._create_poll(
                 ctx,
