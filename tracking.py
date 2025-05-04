@@ -177,6 +177,28 @@ class TrackingCog(commands.Cog):
 
     @app_commands.command(name="tracking", description="Track a new pack or view existing")
     @commands.has_any_role('The BotFather', 'Moderator', 'Manager', 'Server Owner')
+    @app_commands.describe(
+        pack_number="1–6",
+        owner="Owner's name",
+        expire_time="MM/DD HH:MM",
+        verification_link="URL",
+        pack1_rarity="Rarity of card 1",
+        pack1_contents="Card 1 contents",
+        pack2_rarity="(optional) Rarity of card 2",
+        pack2_contents="(optional) Card 2 contents"
+    )
+    @app_commands.choices(
+        pack1_rarity=[
+            app_commands.Choice(name="⭐ ⭐", value="⭐ ⭐"),
+            app_commands.Choice(name="⭐",   value="⭐"),
+            app_commands.Choice(name="♦️♦️♦️♦️", value="♦️♦️♦️♦️"),
+        ],
+        pack2_rarity=[
+            app_commands.Choice(name="⭐ ⭐", value="⭐ ⭐"),
+            app_commands.Choice(name="⭐",   value="⭐"),
+            app_commands.Choice(name="♦️♦️♦️♦️", value="♦️♦️♦️♦️"),
+        ]
+    )
     async def tracking_slash(self, interaction: discord.Interaction,
                               pack_number: app_commands.Range[int,1,6], owner: str,
                               expire_time: str, verification_link: str,
