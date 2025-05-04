@@ -11,6 +11,17 @@ TRACKING_JSON = "tracking_data.json"
 TRACKING_TEMPLATE = "tracking.txt"
 EMBED_COLOR = 0xFF69B4
 
+# utility to format embed description with markdown header for pack line
+def format_embed_text(rec, template):
+    """
+    Formats the template text, then converts the first line (the pack line) into a markdown heading.
+    """
+    raw = template.format(**rec)
+    lines = raw.splitlines()
+    if lines:
+        lines[0] = f"### {lines[0]}"
+    return "\n".join(lines)
+
 class ConfirmReplaceView(discord.ui.View):
     def __init__(self, cog, old_rec, new_rec, is_slash, ctx_or_interaction):
         super().__init__(timeout=60)
@@ -22,12 +33,11 @@ class ConfirmReplaceView(discord.ui.View):
 
     @discord.ui.button(label="Confirm", style=discord.ButtonStyle.green)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # replace record
         self.cog.tracked.remove(self.old_rec)
         self.cog.tracked.append(self.new_rec)
         await self.cog._save()
         embed = discord.Embed(
-            description=f"✅ Replaced pack #{self.old_rec['PACK_NUMBER']} with new entry.",
+            description=format_embed_text(self.new_rec, self.cog.get_pack_tracking_format()),
             color=EMBED_COLOR
         )
         await interaction.response.edit_message(content=None, embed=embed, view=None)
@@ -73,7 +83,7 @@ class TrackingCog(commands.Cog):
         except FileNotFoundError:
             return None
 
-    @commands.command(name="tracking", aliases=["track", "t"] )
+    @commands.command(name="tracking", aliases=["track", "t"])
     @commands.has_any_role('The BotFather', 'Moderator', 'Manager', 'Server Owner')
     async def tracking(self, ctx, action: str = None, arg: str = None):
         """
@@ -81,7 +91,7 @@ class TrackingCog(commands.Cog):
         Sub‑commands:
           clear/empty [n], packs, pack <n>, output, announcement
         """
-        # --- CLEAR / EMPTY (all or specific) ---
+        # CLEAR / EMPTY
         if action in ("clear", "empty"):
             if arg and arg.isdigit():
                 num = int(arg)
@@ -93,20 +103,19 @@ class TrackingCog(commands.Cog):
                     return await ctx.send(embed=embed)
                 embed = discord.Embed(description=f"❌ No tracking found for pack #{num}.", color=EMBED_COLOR)
                 return await ctx.send(embed=embed)
-            # clear all
             self.tracked.clear()
             await self._save()
             embed = discord.Embed(description="✅ All tracking entries have been cleared.", color=EMBED_COLOR)
             return await ctx.send(embed=embed)
 
-        # --- PACKS: list summaries ---
+        # PACKS
         if action == "packs":
             embed = discord.Embed(title=f"🌸 {len(self.tracked)} Tracked Packs", color=EMBED_COLOR)
             for rec in sorted(self.tracked, key=lambda r: r['PACK_NUMBER']):
                 embed.add_field(name=f"Pack #{rec['PACK_NUMBER']} – {rec['OWNER']}", value=rec['CONTENTS'], inline=False)
             return await ctx.send(embed=embed)
 
-        # --- PACK <n> ---
+        # PACK <n>
         if action == "pack" and arg and arg.isdigit():
             num = int(arg)
             rec = next((r for r in self.tracked if r['PACK_NUMBER'] == num), None)
@@ -114,25 +123,27 @@ class TrackingCog(commands.Cog):
                 embed = discord.Embed(description=f"❌ No entry found for pack #{num}.", color=EMBED_COLOR)
                 return await ctx.send(embed=embed)
             template = self.get_pack_tracking_format()
-            embed = discord.Embed(description=template.format(**rec), color=EMBED_COLOR)
+            desc = format_embed_text(rec, template)
+            embed = discord.Embed(description=desc, color=EMBED_COLOR)
             return await ctx.send(embed=embed)
 
-        # --- OUTPUT all entries ---
+        # OUTPUT all
         if action == "output":
             await ctx.message.delete()
             template = self.get_pack_tracking_format()
             for rec in sorted(self.tracked, key=lambda r: r['PACK_NUMBER']):
-                embed = discord.Embed(description=template.format(**rec), color=EMBED_COLOR)
+                desc = format_embed_text(rec, template)
+                embed = discord.Embed(description=desc, color=EMBED_COLOR)
                 await ctx.send(embed=embed)
             return
 
-        # --- ANNOUNCEMENT summary ---
+        # ANNOUNCEMENT
         if action in ("announcement", "a", "ann", "announce"):
             summary = [f"{r['OWNER']}, {r['CONTENTS']}" for r in sorted(self.tracked, key=lambda r: r['PACK_NUMBER'])]
             embed = discord.Embed(description=" , ".join(summary), color=EMBED_COLOR)
             return await ctx.send(embed=embed)
 
-        # --- prompt new entry ---
+        # prompt new entry
         prompt = (
             "**Please provide:**\n"
             "Pack Number,\n"
@@ -158,20 +169,18 @@ class TrackingCog(commands.Cog):
             except:
                 pass
             new_rec = {"PACK_NUMBER": int(pack_number), "OWNER": owner, "CONTENTS": contents, "EXPIRE_TIME": expire_time, "VERIFICATION_LINK": verification_link}
-            # duplicate check
             existing = next((r for r in self.tracked if r['PACK_NUMBER'] == new_rec['PACK_NUMBER']), None)
+            template = self.get_pack_tracking_format()
             if existing:
-                template = self.get_pack_tracking_format()
                 text_old = template.format(**existing)
                 view = ConfirmReplaceView(self, existing, new_rec, False, ctx)
                 embed = discord.Embed(description=f"⚠️ A pack #{new_rec['PACK_NUMBER']} already exists:\n{text_old}\nReplace with new entry?", color=EMBED_COLOR)
                 return await ctx.send(embed=embed, view=view)
-            # save and send
-            template = self.get_pack_tracking_format()
-            embed = discord.Embed(description=template.format(**new_rec), color=EMBED_COLOR)
-            await ctx.send(embed=embed)
             self.tracked.append(new_rec)
             await self._save()
+            desc = format_embed_text(new_rec, template)
+            embed = discord.Embed(description=desc, color=EMBED_COLOR)
+            await ctx.send(embed=embed)
         except asyncio.TimeoutError:
             await ctx.send("❌ Timed out—please try again.")
 
@@ -228,7 +237,8 @@ class TrackingCog(commands.Cog):
             return await interaction.followup.send(embed=embed, view=view, ephemeral=True)
         self.tracked.append(new_rec)
         await self._save()
-        embed = discord.Embed(description=template.format(**new_rec), color=EMBED_COLOR)
+        desc = format_embed_text(new_rec, template)
+        embed = discord.Embed(description=desc, color=EMBED_COLOR)
         await interaction.followup.send(embed=embed, ephemeral=True)
 
 async def setup(bot):
