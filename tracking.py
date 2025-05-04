@@ -9,12 +9,42 @@ import os
 
 TRACKING_JSON = "tracking_data.json"
 TRACKING_TEMPLATE = "tracking.txt"
+EMBED_COLOR = 0xFF69B4
+
+class ConfirmReplaceView(discord.ui.View):
+    def __init__(self, cog, old_rec, new_rec, is_slash, ctx_or_interaction):
+        super().__init__(timeout=60)
+        self.cog = cog
+        self.old_rec = old_rec
+        self.new_rec = new_rec
+        self.is_slash = is_slash
+        self.ctx_or_interaction = ctx_or_interaction
+
+    @discord.ui.button(label="Confirm", style=discord.ButtonStyle.green)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # replace record
+        self.cog.tracked.remove(self.old_rec)
+        self.cog.tracked.append(self.new_rec)
+        await self.cog._save()
+        embed = discord.Embed(
+            description=f"✅ Replaced pack #{self.old_rec['PACK_NUMBER']} with new entry.",
+            color=EMBED_COLOR
+        )
+        await interaction.response.edit_message(content=None, embed=embed, view=None)
+        self.stop()
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.red)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = discord.Embed(
+            description=f"❌ Swap canceled; kept existing pack #{self.old_rec['PACK_NUMBER']}.",
+            color=EMBED_COLOR
+        )
+        await interaction.response.edit_message(content=None, embed=embed, view=None)
+        self.stop()
 
 class TrackingCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-
-        # --- ensure our JSON store exists ---
         if not os.path.exists(TRACKING_JSON):
             with open(TRACKING_JSON, "w") as f:
                 json.dump([], f)
@@ -43,63 +73,66 @@ class TrackingCog(commands.Cog):
         except FileNotFoundError:
             return None
 
-    # ─── prefix command with sub‑actions ───
-    @commands.command(name="tracking", aliases=["track", "t"])
+    @commands.command(name="tracking", aliases=["track", "t"] )
     @commands.has_any_role('The BotFather', 'Moderator', 'Manager', 'Server Owner')
     async def tracking(self, ctx, action: str = None, arg: str = None):
-        """  
-        No args: prompt for a new tracking entry.  
-        Sub‑commands:  
-          clear/empty, packs, pack <n>, output, announcement  
         """
-        # --- CLEAR / EMPTY ---
+        No args: prompt for a new tracking entry.
+        Sub‑commands:
+          clear/empty [n], packs, pack <n>, output, announcement
+        """
+        # --- CLEAR / EMPTY (all or specific) ---
         if action in ("clear", "empty"):
+            if arg and arg.isdigit():
+                num = int(arg)
+                rec = next((r for r in self.tracked if r["PACK_NUMBER"] == num), None)
+                if rec:
+                    self.tracked.remove(rec)
+                    await self._save()
+                    embed = discord.Embed(description=f"✅ Removed tracking for pack #{num}.", color=EMBED_COLOR)
+                    return await ctx.send(embed=embed)
+                embed = discord.Embed(description=f"❌ No tracking found for pack #{num}.", color=EMBED_COLOR)
+                return await ctx.send(embed=embed)
+            # clear all
             self.tracked.clear()
             await self._save()
-            return await ctx.send("✅ All tracking entries have been cleared.")
-
-        # --- PACKS: list summaries sorted by pack number ---
-        if action == "packs":
-            embed = discord.Embed(
-                title=f"🌸 {len(self.tracked)} Tracked Packs",
-                color=0xFF69B4
-            )
-            for rec in sorted(self.tracked, key=lambda r: r['PACK_NUMBER']):
-                embed.add_field(
-                    name=f"Pack #{rec['PACK_NUMBER']} – {rec['OWNER']}",
-                    value=rec["CONTENTS"],
-                    inline=False
-                )
+            embed = discord.Embed(description="✅ All tracking entries have been cleared.", color=EMBED_COLOR)
             return await ctx.send(embed=embed)
 
-        # --- PACK <n>: show one entry ---
+        # --- PACKS: list summaries ---
+        if action == "packs":
+            embed = discord.Embed(title=f"🌸 {len(self.tracked)} Tracked Packs", color=EMBED_COLOR)
+            for rec in sorted(self.tracked, key=lambda r: r['PACK_NUMBER']):
+                embed.add_field(name=f"Pack #{rec['PACK_NUMBER']} – {rec['OWNER']}", value=rec['CONTENTS'], inline=False)
+            return await ctx.send(embed=embed)
+
+        # --- PACK <n> ---
         if action == "pack" and arg and arg.isdigit():
             num = int(arg)
-            rec = next((r for r in self.tracked if r["PACK_NUMBER"] == num), None)
+            rec = next((r for r in self.tracked if r['PACK_NUMBER'] == num), None)
             if not rec:
-                return await ctx.send(f"❌ No entry found for pack #{num}.")
+                embed = discord.Embed(description=f"❌ No entry found for pack #{num}.", color=EMBED_COLOR)
+                return await ctx.send(embed=embed)
             template = self.get_pack_tracking_format()
-            text = template.format(**rec)
-            return await ctx.send(text)
+            embed = discord.Embed(description=template.format(**rec), color=EMBED_COLOR)
+            return await ctx.send(embed=embed)
 
-        # --- OUTPUT: show all saved entries back‑to‑back sorted ---
+        # --- OUTPUT all entries ---
         if action == "output":
             await ctx.message.delete()
             template = self.get_pack_tracking_format()
             for rec in sorted(self.tracked, key=lambda r: r['PACK_NUMBER']):
-                await ctx.send(template.format(**rec))
+                embed = discord.Embed(description=template.format(**rec), color=EMBED_COLOR)
+                await ctx.send(embed=embed)
             return
 
-        # --- ANNOUNCEMENT output: simple comma-based summary sorted ---
+        # --- ANNOUNCEMENT summary ---
         if action in ("announcement", "a", "ann", "announce"):
-            summary = []
-            for rec in sorted(self.tracked, key=lambda r: r['PACK_NUMBER']):
-                owner = rec.get("OWNER", "Unknown")
-                contents = rec.get("CONTENTS", "")
-                summary.append(f"{owner}, {contents}")
-            return await ctx.send(" , ".join(summary))
+            summary = [f"{r['OWNER']}, {r['CONTENTS']}" for r in sorted(self.tracked, key=lambda r: r['PACK_NUMBER'])]
+            embed = discord.Embed(description=" , ".join(summary), color=EMBED_COLOR)
+            return await ctx.send(embed=embed)
 
-        # --- otherwise: fall back to prompting a new entry ---
+        # --- prompt new entry ---
         prompt = (
             "**Please provide:**\n"
             "Pack Number,\n"
@@ -109,17 +142,13 @@ class TrackingCog(commands.Cog):
             "Verification Link"
         )
         await ctx.send(prompt)
-
         def check(m): return m.author == ctx.author and m.channel == ctx.channel
-
         try:
             msg = await self.bot.wait_for("message", check=check, timeout=120)
             parts = [p.strip() for p in msg.content.split(",")]
             if len(parts) != 5:
                 return await ctx.send("❌ Need exactly 5 comma‑separated values.")
             pack_number, owner, contents, expire_time, verification_link = parts
-
-            # convert expire_time to <t:...:F>
             try:
                 dt = datetime.strptime(expire_time, "%m/%d %H:%M")
                 tz = pytz.timezone(await self.get_user_timezone(ctx.author.id) or "UTC")
@@ -128,104 +157,57 @@ class TrackingCog(commands.Cog):
                 expire_time = f"<t:{int(dt.timestamp())}:F>"
             except:
                 pass
-
-            rec = {
-                "PACK_NUMBER": int(pack_number),
-                "OWNER": owner,
-                "CONTENTS": contents,
-                "EXPIRE_TIME": expire_time,
-                "VERIFICATION_LINK": verification_link
-            }
-            # send formatted
+            new_rec = {"PACK_NUMBER": int(pack_number), "OWNER": owner, "CONTENTS": contents, "EXPIRE_TIME": expire_time, "VERIFICATION_LINK": verification_link}
+            # duplicate check
+            existing = next((r for r in self.tracked if r['PACK_NUMBER'] == new_rec['PACK_NUMBER']), None)
+            if existing:
+                template = self.get_pack_tracking_format()
+                text_old = template.format(**existing)
+                view = ConfirmReplaceView(self, existing, new_rec, False, ctx)
+                embed = discord.Embed(description=f"⚠️ A pack #{new_rec['PACK_NUMBER']} already exists:\n{text_old}\nReplace with new entry?", color=EMBED_COLOR)
+                return await ctx.send(embed=embed, view=view)
+            # save and send
             template = self.get_pack_tracking_format()
-            text = template.format(**rec)
-            await ctx.send(text)
-
-            # save
-            self.tracked.append(rec)
+            embed = discord.Embed(description=template.format(**new_rec), color=EMBED_COLOR)
+            await ctx.send(embed=embed)
+            self.tracked.append(new_rec)
             await self._save()
-
         except asyncio.TimeoutError:
             await ctx.send("❌ Timed out—please try again.")
 
-    # ─── slash command /tracking ───
     @app_commands.command(name="tracking", description="Track a new pack or view existing")
     @commands.has_any_role('The BotFather', 'Moderator', 'Manager', 'Server Owner')
-    @app_commands.describe(
-        pack_number="1–6",
-        owner="Owner's name",
-        expire_time="MM/DD HH:MM",
-        verification_link="URL",
-        pack1_rarity="Rarity of card 1",
-        pack1_contents="Card 1 contents",
-        pack2_rarity="(optional) Rarity of card 2",
-        pack2_contents="(optional) Card 2 contents"
-    )
-    @app_commands.choices(pack1_rarity=[
-        app_commands.Choice(name="⭐ ⭐", value="⭐ ⭐"),
-        app_commands.Choice(name="⭐",   value="⭐"),
-        app_commands.Choice(name="♦️♦️♦️♦️", value="♦️♦️♦️♦️"),
-    ],
-    pack2_rarity=[
-        app_commands.Choice(name="⭐ ⭐", value="⭐ ⭐"),
-        app_commands.Choice(name="⭐",   value="⭐"),
-        app_commands.Choice(name="♦️♦️♦️♦️", value="♦️♦️♦️♦️"),
-    ])
-    async def tracking_slash(
-        self, interaction: discord.Interaction,
-        pack_number: app_commands.Range[int,1,6],
-        owner: str,
-        expire_time: str,
-        verification_link: str,
-        pack1_rarity: app_commands.Choice[str],
-        pack1_contents: str,
-        pack2_rarity: app_commands.Choice[str] = None,
-        pack2_contents: str = None,
-    ):
-        # defer immediately so Discord shows “thinking…”
-        await interaction.response.defer(ephemeral=False)
-
+    async def tracking_slash(self, interaction: discord.Interaction,
+                              pack_number: app_commands.Range[int,1,6], owner: str,
+                              expire_time: str, verification_link: str,
+                              pack1_rarity: app_commands.Choice[str], pack1_contents: str,
+                              pack2_rarity: app_commands.Choice[str] = None, pack2_contents: str = None):
+        await interaction.response.defer(ephemeral=True)
+        contents = f"{pack1_rarity.value} {pack1_contents}"
+        if pack2_rarity and pack2_contents:
+            contents += f" + {pack2_rarity.value} {pack2_contents}"
         try:
-            # combine rarities + contents
-            contents = f"{pack1_rarity.value} {pack1_contents}"
-            if pack2_rarity and pack2_contents:
-                contents += f" + {pack2_rarity.value} {pack2_contents}"
-
-            # parse expire_time
-            try:
-                dt = datetime.strptime(expire_time, "%m/%d %H:%M")
-                tz = pytz.timezone(await self.get_user_timezone(interaction.user.id) or "UTC")
-                dt = dt.replace(year=datetime.now(tz).year)
-                dt = tz.localize(dt).astimezone(pytz.utc)
-                expire_code = f"<t:{int(dt.timestamp())}:F>"
-            except:
-                expire_code = expire_time
-
-            # match your template placeholders
-            rec = {
-                "PACK_NUMBER": pack_number,
-                "OWNER": owner,
-                "CONTENTS": contents,
-                "EXPIRE_TIME": expire_code,
-                "VERIFICATION_LINK": verification_link
-            }
-
-            # guard against missing template
-            template = self.get_pack_tracking_format()
-            if not template:
-                return await interaction.followup.send(
-                    "⚠️ Could not load the tracking format. "
-                    "Please make sure `tracking.txt` has a “Pack Tracking” section."
-                )
-
-            # send and save
-            await interaction.followup.send(template.format(**rec))
-            self.tracked.append(rec)
-            await self._save()
-
-        except Exception as e:
-            # always send a response so the interaction completes
-            await interaction.followup.send(f"❌ Error: {e}")
+            dt = datetime.strptime(expire_time, "%m/%d %H:%M")
+            tz = pytz.timezone(await self.get_user_timezone(interaction.user.id) or "UTC")
+            dt = dt.replace(year=datetime.now(tz).year)
+            dt = tz.localize(dt).astimezone(pytz.utc)
+            expire_code = f"<t:{int(dt.timestamp())}:F>"
+        except:
+            expire_code = expire_time
+        new_rec = {"PACK_NUMBER": pack_number, "OWNER": owner, "CONTENTS": contents, "EXPIRE_TIME": expire_code, "VERIFICATION_LINK": verification_link}
+        template = self.get_pack_tracking_format()
+        if not template:
+            return await interaction.followup.send("⚠️ Could not load the tracking format. Please ensure `tracking.txt` has a Pack Tracking section.", ephemeral=True)
+        existing = next((r for r in self.tracked if r['PACK_NUMBER'] == pack_number), None)
+        if existing:
+            text_old = template.format(**existing)
+            view = ConfirmReplaceView(self, existing, new_rec, True, interaction)
+            embed = discord.Embed(description=f"⚠️ A pack #{pack_number} already exists:\n{text_old}\nReplace with new entry?", color=EMBED_COLOR)
+            return await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+        self.tracked.append(new_rec)
+        await self._save()
+        embed = discord.Embed(description=template.format(**new_rec), color=EMBED_COLOR)
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(TrackingCog(bot))
