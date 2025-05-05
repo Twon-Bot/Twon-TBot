@@ -293,57 +293,50 @@ class SettingsView(discord.ui.View):
 
     @discord.ui.button(label="End Poll", style=discord.ButtonStyle.primary)
     async def end_poll(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer(ephemeral=True)
-        # now complete the interaction
-        await interaction.followup.send(
-            content="Preparing to End Poll…", view=None, ephemeral=True)
-
-        # if already closed, just report when it ended
+        # If already closed, report when it ended
         if self.poll_data.get('closed'):
             et = self.poll_data.get('end_time')
             when = et.strftime("%m/%d %H:%M UTC") if et else "unknown time"
-            return await interaction.followup.send(
+            return await interaction.response.send_message(
                 f"❌ Poll already ended on {when}.", ephemeral=True
             )
-        # Show confirmation prompt
+
+        # Build confirmation prompt
         confirm_view = discord.ui.View(timeout=30)
 
-        # ── Confirm button ────────────────────────────
+        # Confirm button
         confirm_btn = discord.ui.Button(label="Confirm End Poll", style=discord.ButtonStyle.danger)
         async def confirm_cb(confirm_inter: discord.Interaction):
-            # 1) mark closed
+            # Mark closed
             self.poll_data['closed'] = True
-            # 2) disable all non-settings/add_option buttons
+            self.poll_data['end_time'] = datetime.datetime.utcnow()
+            # Disable all non-settings buttons in the original view
             for item in list(self.poll_data['view'].children):
-                # now disable everything except the settings button
                 if getattr(item, 'custom_id', None) != 'settings':
                     item.disabled = True
-            # 3) edit the original poll message
+            # Edit the original poll message
             channel = self.cog.bot.get_channel(self.poll_data['channel_id'])
             poll_msg = await channel.fetch_message(self.message_id)
             await poll_msg.edit(embed=self.poll_data['build_embed'](self.poll_data), view=self.poll_data['view'])
-            # 4) send confirmation separately
-            await confirm_inter.response.send_message("✅ Poll ended.", ephemeral=True)
-            # ── remove from Postgres so it no longer reloads ────────────
+            # Remove from database
             await self.cog.bot.pg_pool.execute("DELETE FROM polls WHERE id = $1", self.poll_data["id"])
+            # Confirm to user
+            await confirm_inter.response.send_message("✅ Poll ended.", ephemeral=True)
             confirm_view.stop()
         confirm_btn.callback = confirm_cb
         confirm_view.add_item(confirm_btn)
 
-        # ── Cancel button ─────────────────────────────
+        # Cancel button
         cancel_btn = discord.ui.Button(label="Cancel", style=discord.ButtonStyle.secondary)
         async def cancel_cb(cancel_inter: discord.Interaction):
-            # replace prompt with a new ephemeral cancellation notice
             await cancel_inter.response.send_message("❌ Action cancelled.", ephemeral=True)
             confirm_view.stop()
         cancel_btn.callback = cancel_cb
         confirm_view.add_item(cancel_btn)
 
-        # show the confirm/cancel buttons via follow‑up after defer
-        await interaction.followup.send(
-            content="Are you sure you want to end the poll?",
-            view=confirm_view,
-            ephemeral=True
+        # Send the confirmation prompt
+        await interaction.response.send_message(
+            content="Are you sure you want to end the poll?", view=confirm_view, ephemeral=True
         )
 
     @discord.ui.button(label="Export Votes", style=discord.ButtonStyle.primary)
