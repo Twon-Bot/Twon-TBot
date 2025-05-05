@@ -96,7 +96,7 @@ async def load_extensions():
         await bot.load_extension('announce')
         await bot.load_extension('schedule')
         await bot.load_extension('help')
-        #await bot.load_extension('poll')
+        await bot.load_extension('poll')
         await bot.load_extension('delay')
         await bot.load_extension('expire')
         await bot.load_extension('tracking')
