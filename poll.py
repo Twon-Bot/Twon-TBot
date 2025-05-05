@@ -117,9 +117,10 @@ class EditPollModal(discord.ui.Modal, title="Edit Poll"):
         self.message_id = message_id
         # pre‑fill defaults
         self.question.default = poll_data['question']
+        # use stored raw mention_text for default, not boolean
         self.mentions.default = poll_data.get('mention_text', '')
-        et = poll_data.get('end_time')
-        self.end_time.default = et.strftime("%m/%d %H:%M") if et else ""
+        # preserve original end_time string if available
+        self.end_time.default = poll_data.get('end_time_str', '')
         self.options.default = "\n".join(poll_data['options'])
 
     async def on_submit(self, interaction: discord.Interaction):
@@ -136,7 +137,6 @@ class EditPollModal(discord.ui.Modal, title="Edit Poll"):
         # parse and validate end_time if provided
         if self.end_time.value.strip():
             tz = pytz.timezone(await self.cog.get_user_timezone(interaction.user.id))
-            # build datetime in user's timezone
             dt_input = datetime.strptime(self.end_time.value, "%m/%d %H:%M").replace(
                 year=datetime.now(tz).year
             )
@@ -148,20 +148,22 @@ class EditPollModal(discord.ui.Modal, title="Edit Poll"):
                     ephemeral=True
                 )
                 return
-            # store in UTC
+            # store in UTC and raw string
             self.poll_data['end_time'] = localized.astimezone(pytz.utc)
+            self.poll_data['end_time_str'] = self.end_time.value
         else:
-            # remove end_time if blank
             self.poll_data.pop('end_time', None)
+            self.poll_data.pop('end_time_str', None)
 
         # update question & mentions after validations
         self.poll_data['question'] = self.question.value
-        self.poll_data['mention_text'] = self.mentions.value.strip()
-        self.poll_data['mention'] = bool(self.mentions.value.strip())
+        # preserve mention text exactly, avoid formatting errors
+        mention_txt = self.mentions.value.strip()
+        self.poll_data['mention_text'] = mention_txt
+        self.poll_data['mention'] = True if mention_txt else False
 
         # update options & preserve old counts
         old_counts = self.poll_data.get('vote_count', {})
-        # carry over existing votes for unchanged options
         self.poll_data['vote_count'] = {opt: old_counts.get(opt, 0) for opt in new_opts}
         self.poll_data['options'] = new_opts
 
@@ -170,11 +172,9 @@ class EditPollModal(discord.ui.Modal, title="Edit Poll"):
         view = self.poll_data['view']
         view.clear_items()
         for i, opt in enumerate(new_opts):
-            # button displays emoji only; vote counts shown in embed
             btn = discord.ui.Button(label=OPTION_EMOJIS[i], custom_id=opt)
             btn.callback = self.poll_data['button_callback']
             view.add_item(btn)
-        # re‑add ➕ & ⚙️
         plus = discord.ui.Button(label="➕", style=discord.ButtonStyle.secondary, custom_id="add_option")
         plus.callback = self.cog.add_option_callback
         settings_btn = discord.ui.Button(label="⚙️", style=discord.ButtonStyle.secondary, custom_id="settings")
@@ -182,7 +182,6 @@ class EditPollModal(discord.ui.Modal, title="Edit Poll"):
         view.add_item(plus)
         view.add_item(settings_btn)
 
-        # apply to the original message
         channel = self.cog.bot.get_channel(self.poll_data['channel_id'])
         msg = await channel.fetch_message(self.message_id)
         await msg.edit(embed=embed, view=view)
