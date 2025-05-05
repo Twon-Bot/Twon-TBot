@@ -12,6 +12,7 @@ class HonoraryCog(commands.Cog):
         name='honorarymembers',
         aliases=['honorarymember', 'hmember', 'hmem', 'honorary', 'hm']
     )
+    @commands.has_any_role('The BotFather', 'Spreadsheet-Master', 'Server Owner', 'Manager', 'Moderator')
     async def honorarymembers(self, ctx):
         """
         Lists all members with the 'honorary member' role, stripping any leading '#NN ' prefix from their display names.
