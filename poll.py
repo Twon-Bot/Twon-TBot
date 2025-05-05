@@ -1,6 +1,6 @@
 import discord
 from discord.ext import commands
-from discord import app_commands
+from discord import app_commands, TextStyle
 import csv
 import io
 import asyncio
@@ -106,7 +106,7 @@ class EditPollModal(discord.ui.Modal, title="Edit Poll"):
     end_time = discord.ui.TextInput(label="End Time MM/DD HH:MM", required=False)
     options = discord.ui.TextInput(
         label="Options (one per line)",
-        style=discord.ui.TextInputStyle.paragraph,
+        style=TextStyle.paragraph,
         max_length=1000
     )
 
