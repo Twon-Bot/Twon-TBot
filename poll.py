@@ -293,12 +293,11 @@ class SettingsView(discord.ui.View):
 
     @discord.ui.button(label="End Poll", style=discord.ButtonStyle.primary)
     async def end_poll(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # If already closed, report when it ended
+        # If already closed, report who ended it
         if self.poll_data.get('closed'):
-            et = self.poll_data.get('end_time')
-            when = et.strftime("%m/%d %H:%M UTC") if et else "unknown time"
+            ended_by = self.poll_data.get('ended_by', 'unknown user')
             return await interaction.response.send_message(
-                f"❌ Poll already ended on {when}.", ephemeral=True
+                f"❌ Poll already ended by {ended_by}.", ephemeral=True
             )
 
         # Build confirmation prompt
@@ -311,9 +310,10 @@ class SettingsView(discord.ui.View):
             await confirm_inter.response.edit_message(content="✅ Poll ended.", view=None)
             # Now perform end-poll tasks in background
             try:
-                # Mark closed
+                # Mark closed and record who ended it
                 self.poll_data['closed'] = True
                 self.poll_data['end_time'] = datetime.datetime.utcnow()
+                self.poll_data['ended_by'] = confirm_inter.user.display_name
                 # Disable all non-settings buttons in the original view
                 for item in list(self.poll_data['view'].children):
                     if getattr(item, 'custom_id', None) != 'settings':
