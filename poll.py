@@ -123,8 +123,20 @@ class EditPollModal(discord.ui.Modal, title="Edit Poll"):
         # pre‑fill defaults
         self.question.default = poll_data['question']
         self.mentions.default = poll_data.get('mention_text', '')
-        self.end_time.default = poll_data.get('end_time_str', '')
+        # if an end_time_str was stored, use it; otherwise format existing datetime
+        if 'end_time_str' in poll_data:
+            self.end_time.default = poll_data['end_time_str']
+        elif 'end_time' in poll_data:
+            # convert UTC to user's timezone string
+            # assume cog.get_user_timezone can be called sync for default display
+            tz = pytz.timezone(self.cog.default_timezone)
+            et_local = poll_data['end_time'].astimezone(tz)
+            self.end_time.default = et_local.strftime("%m/%d %H:%M")
+        else:
+            self.end_time.default = ''
         self.options.default = "\n".join(poll_data['options'])
+        # keep track of original end_time string to detect changes
+        self._original_end_str = self.end_time.default
 
     async def on_submit(self, interaction: discord.Interaction):
         # wrap all logic to prevent partial mutations on error
@@ -138,10 +150,11 @@ class EditPollModal(discord.ui.Modal, title="Edit Poll"):
                 )
                 return
 
-            # parse and validate end_time if provided
-            if self.end_time.value.strip():
+            # determine if end_time changed
+            end_input = self.end_time.value.strip()
+            if end_input and end_input != self._original_end_str:
                 tz = pytz.timezone(await self.cog.get_user_timezone(interaction.user.id))
-                dt_input = datetime.strptime(self.end_time.value, "%m/%d %H:%M").replace(
+                dt_input = datetime.strptime(end_input, "%m/%d %H:%M").replace(
                     year=datetime.now(tz).year
                 )
                 localized = tz.localize(dt_input)
@@ -153,10 +166,15 @@ class EditPollModal(discord.ui.Modal, title="Edit Poll"):
                     )
                     return
                 new_end_utc = localized.astimezone(pytz.utc)
-                new_end_str = self.end_time.value
-            else:
+                new_end_str = end_input
+            elif end_input == '':
+                # user cleared end time
                 new_end_utc = None
                 new_end_str = None
+            else:
+                # unchanged
+                new_end_utc = self.poll_data.get('end_time')
+                new_end_str = self._original_end_str
 
             # update question & mentions
             mention_txt = self.mentions.value.strip()
@@ -210,13 +228,14 @@ class EditPollModal(discord.ui.Modal, title="Edit Poll"):
         new_view.add_item(plus)
         new_view.add_item(settings_btn)
 
-        # edit the message with new content, embed, and view
+        # edit the message with new content, embed, view, and allow mentions
         channel = self.cog.bot.get_channel(self.poll_data['channel_id'])
         msg = await channel.fetch_message(self.message_id)
         await msg.edit(
             content=self.poll_data.get('mention_text') or None,
             embed=embed,
-            view=new_view
+            view=new_view,
+            allowed_mentions=discord.AllowedMentions(everyone=True, roles=True, users=True)
         )
 
         # respond to the modal
