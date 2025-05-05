@@ -10,6 +10,7 @@ import re  # for regex matching
 import os
 from dotenv import load_dotenv
 import json
+import logging
 
 # ─── Role IDs for reminders ─────────────────────────────
 load_dotenv()
@@ -100,9 +101,6 @@ class AddOptionModal(discord.ui.Modal, title="Add an Option"):
                 f"Something went wrong adding the option: {e}", ephemeral=True
             )
 
-import logging
-import pytz
-from datetime import datetime
 
 # configure module logger
 log = logging.getLogger(__name__)
@@ -253,39 +251,38 @@ class SettingsView(discord.ui.View):
         
     @discord.ui.button(label="Voters", style=discord.ButtonStyle.primary)
     async def voter_list(self, interaction: discord.Interaction, button: discord.ui.Button):
-
-        # build option list + final “Not Voted”
         options = [
             discord.SelectOption(label=opt, value=opt, emoji=OPTION_EMOJIS[i])
-            for i,opt in enumerate(self.poll_data['options'])
+            for i, opt in enumerate(self.poll_data['options'])
         ]
         options.append(discord.SelectOption(label="Not Voted", value="__NOT_VOTED__"))
-        
+
+        class VoterSelect(discord.ui.Select):
+            def __init__(self):
+                super().__init__(
+                    placeholder="Select an option",
+                    options=options
+                )
+
+            async def callback(self, select_inter: discord.Interaction):
+                sel = self.values[0]
+                if sel == "__NOT_VOTED__":
+                    role = select_inter.guild.get_role(PLAYER_ROLE_ID)
+                    not_voted = [m.mention for m in role.members if m.id not in self.poll_data['user_votes']]
+                    text = "\n".join(not_voted) if not_voted else "Everyone has voted!"
+                    await select_inter.response.edit_message(content=f"Users not voted:\n{text}", view=None, ephemeral=True)
+                else:
+                    voters = [
+                        f"<@{uid}>"
+                        for uid, v in self.poll_data['user_votes'].items()
+                        if (isinstance(v, list) and sel in v) or v == sel
+                    ]
+                    text = "\n".join(voters) if voters else "No votes yet."
+                    await select_inter.response.edit_message(content=f"Voters for {sel}:\n{text}", view=None, ephemeral=True)
+
         view = discord.ui.View(timeout=None)
-        select = discord.ui.Select(
-            placeholder="Select an option",
-            options=[discord.SelectOption(label=o, value=o) for o in self.poll_data['options']] + 
-                    [discord.SelectOption(label="All (not voted)", value="__all__")]
-        )
-        async def select_cb(select_inter: discord.Interaction):
-            sel = select.values[0]
-            if sel == "__all__":
-                # find everyone who hasn’t voted
-                role = select_inter.guild.get_role(PLAYER_ROLE_ID)
-                not_voted = [m.mention for m in role.members if m.id not in self.poll_data['user_votes']]
-                text = "\n".join(not_voted) if not_voted else "Everyone has voted!"
-                await select_inter.response.edit_message(content=f"Users not voted:\n{text}", view=None, ephemeral=True)
-            else:
-                voters = [
-                    f"<@{uid}>" 
-                    for uid, v in self.poll_data['user_votes'].items() 
-                    if (isinstance(v, list) and sel in v) or v == sel
-                ]
-                text = "\n".join(voters) if voters else "No votes yet."
-                await select_inter.response.edit_message(content=f"Voters for {sel}:\n{text}", view=None, ephemeral=True)
-        select.callback = select_cb    # ← bind here
-        view.add_item(select)
-        # replace the settings prompt with the voter‑select menu
+        view.add_item(VoterSelect())
+
         await interaction.response.edit_message(
             content="Select option to view voters:", view=view, ephemeral=True
         )
