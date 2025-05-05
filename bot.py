@@ -1,4 +1,3 @@
-
 # Use RAILWAY as the cloud platform
 
 import discord
@@ -28,6 +27,9 @@ intents.message_content = True
 intents.members = True
 bot = commands.Bot(command_prefix="!!", intents=intents, case_insensitive=True, help_command=None)
 
+# Track whether slash commands have been synced
+_slash_synced = False
+
 class Database:
     def __init__(self, db_file='bot_data.db'):
         self.connection = sqlite3.connect(db_file)
@@ -41,6 +43,7 @@ class Database:
     def close(self):
         self.connection.close()
 
+
 def initialize_database(db):
     db.execute('''CREATE TABLE IF NOT EXISTS announcements (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -52,7 +55,7 @@ def initialize_database(db):
 class AnnouncementCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        print("AnnouncementCog has been loaded.")  # Ensure this prints when loaded
+        print("AnnouncementCog has been loaded.")
 
     @commands.command()
     async def announce(self, ctx, *, message: str):
@@ -67,6 +70,7 @@ class AnnouncementCog(commands.Cog):
             await ctx.send(f"@everyone {message}")
         except asyncio.TimeoutError:
             await ctx.send("Announcement confirmation timed out. Please try again.")
+
 
 @bot.command(aliases=["gtz"])
 @commands.has_any_role('The BotFather', 'Moderator', 'Manager', 'Server Owner', 'Police')
@@ -102,7 +106,6 @@ async def load_extensions():
         await bot.load_extension('tracking')
         await bot.load_extension('write')
         await bot.load_extension('endcycle')
-        await bot.load_extension('delete')
         await bot.load_extension('addingschedule')
         await bot.load_extension('timestamp')
         await bot.load_extension('tony')
@@ -124,27 +127,24 @@ async def on_command_error(ctx, error):
 
 @bot.event
 async def on_ready():
-    for gid in GUILD_IDS:
-        guild_obj = discord.Object(id=gid)
-        # copy global slash-commands into this guild
-        bot.tree.copy_global_to(guild=guild_obj)
-        # sync them
-        synced = await bot.tree.sync(guild=guild_obj)
-        print(f"Synced {len(synced)} slash commands to guild {gid}.")
+    global _slash_synced
+    # Sync slash commands only once
+    if not _slash_synced:
+        for gid in GUILD_IDS:
+            guild_obj = discord.Object(id=gid)
+            bot.tree.copy_global_to(guild=guild_obj)
+            synced = await bot.tree.sync(guild=guild_obj)
+            print(f"Synced {len(synced)} slash commands to guild {gid}.")
+        _slash_synced = True
     print("Bot is now ready!")
 
-# Show who uses which command in powershells
+# Log command usage
 @bot.listen()
 async def on_command(ctx):
-    # Get the server nickname if available; if not, use the display name.
     nickname = ctx.author.nick if ctx.author.nick else ctx.author.display_name
-    # Get the command that was used (the full message content will show the !! command and arguments)
     command_used = ctx.message.content
-    # Get the current time (you can adjust the format or timezone as needed)
     time_used = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    # Get the channel name
     channel_name = ctx.channel.name if ctx.channel else "Direct Message"
-    
     print(f"{nickname} used command '{command_used}' in #{channel_name} at {time_used}")
 
 async def main():
@@ -164,38 +164,25 @@ async def main():
         )
     """)
 
-    try:
-        async with bot:
+    backoff = 5
+    # Attempt to start the bot with exponential backoff on rate-limit
+    while True:
+        try:
+            # load extensions before starting
             await load_extensions()
             await bot.start(TOKEN)
-    except KeyboardInterrupt:
-        # on CTRL+C (local shutdown), if there are pending delayed announcements, ping and dump them
-        delay_cog = bot.get_cog("DelayedAnnouncements")
-        if delay_cog and getattr(delay_cog, "delayed_announcements", None):
-            pending = delay_cog.delayed_announcements
-            if pending:
-                # build the same embed as viewdelay
-                embed = discord.Embed(title="Pending Announcements  📋", color=0xFF8C00)
-                lines = ["──────────────────────────────"]
-                for ts, ann_list in sorted(pending.items()):
-                    for ann in ann_list:
-                        lines.append(f"🔸 **{ann['name']}**\n   - <t:{ts}:F>")
-                embed.description = "\n".join(lines)
-                if TEST_ANNOUNCEMENT_CHANNEL_ID:
-                    ch = bot.get_channel(TEST_ANNOUNCEMENT_CHANNEL_ID)
-                    if ch:
-                        # ping yourself at 761329785652903966
-                        await ch.send("<@761329785652903966>", embed=embed)
-        raise  # re‑raise so we still exit
-    finally:
-        db.close()
+            break  # clean shutdown
+        except discord.HTTPException as e:
+            if e.status == 429:
+                print(f"Rate‑limited on login; sleeping {backoff}s before retry")
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, 300)
+            else:
+                raise
+    db.close()
 
 if __name__ == "__main__":
     try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(main())
+        asyncio.run(main())
     except KeyboardInterrupt:
         print("Shutting down the bot...")
-    finally:
-        loop.close()
