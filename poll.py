@@ -100,6 +100,11 @@ class AddOptionModal(discord.ui.Modal, title="Add an Option"):
                 f"Something went wrong adding the option: {e}", ephemeral=True
             )
 
+import logging
+
+# configure module logger
+log = logging.getLogger(__name__)
+
 class EditPollModal(discord.ui.Modal, title="Edit Poll"):
     question = discord.ui.TextInput(label="Question", max_length=200)
     mentions = discord.ui.TextInput(label="Mentions (e.g. @everyone)", required=False)
@@ -122,77 +127,103 @@ class EditPollModal(discord.ui.Modal, title="Edit Poll"):
         self.options.default = "\n".join(poll_data['options'])
 
     async def on_submit(self, interaction: discord.Interaction):
-        # collect new values
-        new_opts = [line.strip() for line in self.options.value.splitlines() if line.strip()]
-        if len(new_opts) < 2:
+        # wrap all logic to prevent partial mutations on error
+        try:
+            # collect new values
+            new_opts = [line.strip() for line in self.options.value.splitlines() if line.strip()]
+            if len(new_opts) < 2:
+                await interaction.response.send_message(
+                    "❌ You must have at least two options to create a poll.",
+                    ephemeral=True
+                )
+                return
+
+            # parse and validate end_time if provided
+            if self.end_time.value.strip():
+                tz = pytz.timezone(await self.cog.get_user_timezone(interaction.user.id))
+                dt_input = datetime.strptime(self.end_time.value, "%m/%d %H:%M").replace(
+                    year=datetime.now(tz).year
+                )
+                localized = tz.localize(dt_input)
+                now = datetime.now(tz)
+                if localized <= now:
+                    await interaction.response.send_message(
+                        "❌ End time must be in the future.",
+                        ephemeral=True
+                    )
+                    return
+                new_end_utc = localized.astimezone(pytz.utc)
+                new_end_str = self.end_time.value
+            else:
+                new_end_utc = None
+                new_end_str = None
+
+            # update question & mentions
+            mention_txt = self.mentions.value.strip()
+            # update vote counts mapping, preserving by name or position
+            old_opts = self.poll_data.get('options', [])
+            old_counts = self.poll_data.get('vote_count', {})
+            new_counts = {}
+            for idx, opt in enumerate(new_opts):
+                if opt in old_counts:
+                    new_counts[opt] = old_counts[opt]
+                elif idx < len(old_opts) and old_opts[idx] in old_counts:
+                    new_counts[opt] = old_counts[old_opts[idx]]
+                else:
+                    new_counts[opt] = 0
+
+            # apply all updates to poll_data
+            self.poll_data.update({
+                'question': self.question.value,
+                'mention_text': mention_txt,
+                'mention': bool(mention_txt),
+                'options': new_opts,
+                'vote_count': new_counts
+            })
+            if new_end_utc:
+                self.poll_data['end_time'] = new_end_utc
+                self.poll_data['end_time_str'] = new_end_str
+            else:
+                self.poll_data.pop('end_time', None)
+                self.poll_data.pop('end_time_str', None)
+
+        except Exception as e:
+            # log error, notify user, do not mutate view
+            log.exception(f"EditPollModal error: {e}")
             await interaction.response.send_message(
-                "❌ You must have at least two options to create a poll.",
+                "❌ Something went wrong while updating the poll. No changes applied.",
                 ephemeral=True
             )
             return
 
-        # parse and validate end_time if provided
-        if self.end_time.value.strip():
-            tz = pytz.timezone(await self.cog.get_user_timezone(interaction.user.id))
-            dt_input = datetime.strptime(self.end_time.value, "%m/%d %H:%M").replace(
-                year=datetime.now(tz).year
-            )
-            localized = tz.localize(dt_input)
-            now = datetime.now(tz)
-            if localized <= now:
-                await interaction.response.send_message(
-                    "❌ End time must be in the future.",
-                    ephemeral=True
-                )
-                return
-            self.poll_data['end_time'] = localized.astimezone(pytz.utc)
-            self.poll_data['end_time_str'] = self.end_time.value
-        else:
-            self.poll_data.pop('end_time', None)
-            self.poll_data.pop('end_time_str', None)
-
-        # update question & mentions
-        self.poll_data['question'] = self.question.value
-        mention_txt = self.mentions.value.strip()
-        self.poll_data['mention_text'] = mention_txt
-        self.poll_data['mention'] = bool(mention_txt)
-
-        # update options & preserve old counts, including renamed options
-        old_opts = self.poll_data.get('options', [])
-        old_counts = self.poll_data.get('vote_count', {})
-        new_counts = {}
-        for idx, opt in enumerate(new_opts):
-            if opt in old_counts:
-                new_counts[opt] = old_counts[opt]
-            elif idx < len(old_opts) and old_opts[idx] in old_counts:
-                # preserve count by position if name changed
-                new_counts[opt] = old_counts[old_opts[idx]]
-            else:
-                new_counts[opt] = 0
-        self.poll_data['options'] = new_opts
-        self.poll_data['vote_count'] = new_counts
-
-        # rebuild embed & view, preserving votes and mentions
+        # rebuild embed & a fresh view, preserving votes and mentions
         embed = self.poll_data['build_embed'](self.poll_data)
-        view = self.poll_data['view']
-        view.clear_items()
+        new_view = discord.ui.View()
         for i, opt in enumerate(new_opts):
             btn = discord.ui.Button(label=OPTION_EMOJIS[i], custom_id=opt)
             btn.callback = self.poll_data['button_callback']
-            view.add_item(btn)
+            new_view.add_item(btn)
         plus = discord.ui.Button(label="➕", style=discord.ButtonStyle.secondary, custom_id="add_option")
         plus.callback = self.cog.add_option_callback
         settings_btn = discord.ui.Button(label="⚙️", style=discord.ButtonStyle.secondary, custom_id="settings")
         settings_btn.callback = self.cog.settings_callback
-        view.add_item(plus)
-        view.add_item(settings_btn)
+        new_view.add_item(plus)
+        new_view.add_item(settings_btn)
 
+        # edit the message with new content, embed, and view
         channel = self.cog.bot.get_channel(self.poll_data['channel_id'])
         msg = await channel.fetch_message(self.message_id)
-        # include mention_text as message content so edits apply
-        await msg.edit(content=self.poll_data.get('mention_text', None), embed=embed, view=view)
+        await msg.edit(
+            content=self.poll_data.get('mention_text') or None,
+            embed=embed,
+            view=new_view
+        )
 
+        # respond to the modal
         await interaction.response.send_message("✅ Poll updated.", ephemeral=True)
+
+        # replace stored view for future persistence
+        self.poll_data['view'] = new_view
 
 
 class SettingsView(discord.ui.View):
