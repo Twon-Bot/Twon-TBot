@@ -101,6 +101,8 @@ class AddOptionModal(discord.ui.Modal, title="Add an Option"):
             )
 
 import logging
+import pytz
+from datetime import datetime
 
 # configure module logger
 log = logging.getLogger(__name__)
@@ -120,17 +122,25 @@ class EditPollModal(discord.ui.Modal, title="Edit Poll"):
         self.cog = cog
         self.poll_data = poll_data
         self.message_id = message_id
-        # pre‑fill defaults
+        # pre‑fill defaults for question and mentions
         self.question.default = poll_data.get('question', '')
         self.mentions.default = poll_data.get('mention_text', '')
-        # always use the stored end_time_str if present
-        self.end_time.default = poll_data.get('end_time_str', '')
+
+        # pre‑fill end_time: use stored string, else format existing datetime
+        if 'end_time_str' in poll_data:
+            default_end = poll_data['end_time_str'] or ''
+        elif 'end_time' in poll_data:
+            # format UTC datetime to MM/DD HH:MM
+            default_end = poll_data['end_time'].strftime("%m/%d %H:%M")
+        else:
+            default_end = ''
+        self.end_time.default = default_end
+        self._original_end_str = default_end
+
+        # pre‑fill options
         self.options.default = "\n".join(poll_data.get('options', []))
-        # keep track of original end_time string to detect changes
-        self._original_end_str = self.end_time.default
 
     async def on_submit(self, interaction: discord.Interaction):
-        # wrap all logic to prevent partial mutations on error
         try:
             # collect new values
             new_opts = [line.strip() for line in self.options.value.splitlines() if line.strip()]
@@ -141,7 +151,7 @@ class EditPollModal(discord.ui.Modal, title="Edit Poll"):
                 )
                 return
 
-            # determine if end_time changed
+            # determine end_time handling
             end_input = self.end_time.value.strip()
             if end_input and end_input != self._original_end_str:
                 tz = pytz.timezone(await self.cog.get_user_timezone(interaction.user.id))
@@ -149,8 +159,7 @@ class EditPollModal(discord.ui.Modal, title="Edit Poll"):
                     year=datetime.now(tz).year
                 )
                 localized = tz.localize(dt_input)
-                now = datetime.now(tz)
-                if localized <= now:
+                if localized <= datetime.now(tz):
                     await interaction.response.send_message(
                         "❌ End time must be in the future.",
                         ephemeral=True
@@ -163,13 +172,11 @@ class EditPollModal(discord.ui.Modal, title="Edit Poll"):
                 new_end_utc = None
                 new_end_str = None
             else:
-                # unchanged
+                # unchanged original
                 new_end_utc = self.poll_data.get('end_time')
                 new_end_str = self._original_end_str
 
-            # update question & mentions
-            mention_txt = self.mentions.value.strip()
-            # update vote counts mapping, preserving by name or position
+            # prepare updated vote counts
             old_opts = self.poll_data.get('options', [])
             old_counts = self.poll_data.get('vote_count', {})
             new_counts = {}
@@ -181,11 +188,11 @@ class EditPollModal(discord.ui.Modal, title="Edit Poll"):
                 else:
                     new_counts[opt] = 0
 
-            # apply all updates to poll_data
+            # apply updates
             self.poll_data.update({
                 'question': self.question.value,
-                'mention_text': mention_txt,
-                'mention': bool(mention_txt),
+                'mention_text': self.mentions.value.strip(),
+                'mention': bool(self.mentions.value.strip()),
                 'options': new_opts,
                 'vote_count': new_counts
             })
@@ -197,7 +204,6 @@ class EditPollModal(discord.ui.Modal, title="Edit Poll"):
                 self.poll_data.pop('end_time_str', None)
 
         except Exception as e:
-            # log error, notify user, do not mutate view
             log.exception(f"EditPollModal error: {e}")
             await interaction.response.send_message(
                 "❌ Something went wrong while updating the poll. No changes applied.",
@@ -205,7 +211,7 @@ class EditPollModal(discord.ui.Modal, title="Edit Poll"):
             )
             return
 
-        # rebuild embed & a fresh view, preserving votes and mentions
+        # rebuild embed & view
         embed = self.poll_data['build_embed'](self.poll_data)
         new_view = discord.ui.View()
         for i, opt in enumerate(self.poll_data['options']):
@@ -219,7 +225,7 @@ class EditPollModal(discord.ui.Modal, title="Edit Poll"):
         new_view.add_item(plus)
         new_view.add_item(settings_btn)
 
-        # edit the message with new content, embed, view, and allow mentions
+        # apply message edit with mentions allowed
         channel = self.cog.bot.get_channel(self.poll_data['channel_id'])
         msg = await channel.fetch_message(self.message_id)
         await msg.edit(
@@ -229,10 +235,7 @@ class EditPollModal(discord.ui.Modal, title="Edit Poll"):
             allowed_mentions=discord.AllowedMentions(everyone=True, roles=True, users=True)
         )
 
-        # respond to the modal
         await interaction.response.send_message("✅ Poll updated.", ephemeral=True)
-
-        # replace stored view for future persistence
         self.poll_data['view'] = new_view
 
 
