@@ -251,41 +251,44 @@ class SettingsView(discord.ui.View):
         
     @discord.ui.button(label="Voters", style=discord.ButtonStyle.primary)
     async def voter_list(self, interaction: discord.Interaction, button: discord.ui.Button):
-
-        # build option list + final “Not Voted”
+        # Build select options including a "Not Voted" choice
         options = [
             discord.SelectOption(label=opt, value=opt, emoji=OPTION_EMOJIS[i])
-            for i,opt in enumerate(self.poll_data['options'])
+            for i, opt in enumerate(self.poll_data['options'])
         ]
         options.append(discord.SelectOption(label="Not Voted", value="__NOT_VOTED__"))
-        
-        view = discord.ui.View(timeout=None)
-        select = discord.ui.Select(
-            placeholder="Select an option",
-            options=[discord.SelectOption(label=o, value=o) for o in self.poll_data['options']] + 
-                    [discord.SelectOption(label="All (not voted)", value="__all__")]
-        )
-        async def select_cb(select_inter: discord.Interaction):
-            sel = select.values[0]
-            if sel == "__all__":
-                # find everyone who hasn’t voted
-                role = select_inter.guild.get_role(PLAYER_ROLE_ID)
-                not_voted = [m.mention for m in role.members if m.id not in self.poll_data['user_votes']]
-                text = "\n".join(not_voted) if not_voted else "Everyone has voted!"
-                await select_inter.response.edit_message(content=f"Users not voted:\n{text}", view=None, ephemeral=True)
-            else:
-                voters = [
-                    f"<@{uid}>" 
-                    for uid, v in self.poll_data['user_votes'].items() 
-                    if (isinstance(v, list) and sel in v) or v == sel
-                ]
-                text = "\n".join(voters) if voters else "No votes yet."
-                await select_inter.response.edit_message(content=f"Voters for {sel}:\n{text}", view=None, ephemeral=True)
-        select.callback = select_cb    # ← bind here
-        view.add_item(select)
-        # replace the settings prompt with the voter‑select menu
-        await interaction.response.edit_message(
-            content="Select option to view voters:", view=view, ephemeral=True
+
+        # Define a Select that carries poll_data
+        class VoterSelect(discord.ui.Select):
+            def __init__(self, poll_data):
+                super().__init__(
+                    placeholder="Select an option",
+                    options=options
+                )
+                self.poll_data = poll_data
+
+            async def callback(self, select_inter: discord.Interaction):
+                selected = self.values[0]
+                # Handle "Not Voted"
+                if selected == "__NOT_VOTED__":
+                    role = select_inter.guild.get_role(PLAYER_ROLE_ID)
+                    not_voted = [m.mention for m in role.members if m.id not in self.poll_data['user_votes']]
+                    content = "Users not voted:\n" + ("\n".join(not_voted) if not_voted else "Everyone has voted!")
+                else:
+                    # List voters who chose the selected option
+                    voters = [f"<@{uid}>" for uid, v in self.poll_data['user_votes'].items()
+                              if (isinstance(v, list) and selected in v) or v == selected]
+                    content = f"Voters for {selected}:\n" + ("\n".join(voters) if voters else "No votes yet.")
+                # Send ephemeral message with the result
+                await select_inter.response.send_message(content=content, ephemeral=True)
+
+        # Create a view for the select menu and add our VoterSelect
+        menu_view = discord.ui.View(timeout=None)
+        menu_view.add_item(VoterSelect(self.poll_data))
+
+        # Send an ephemeral dropdown menu to the user
+        await interaction.response.send_message(
+            content="Select option to view voters:", view=menu_view, ephemeral=True
         )
 
     @discord.ui.button(label="End Poll", style=discord.ButtonStyle.primary)
