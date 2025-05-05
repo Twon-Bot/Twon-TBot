@@ -495,44 +495,37 @@ class PollCog(commands.Cog):
 
             # ─── single-vote mode ───────────────────────────────────────
             prev = poll['user_votes'].get(interaction.user.id)
-            # if clicking same option, ask to remove
+            # if clicking same option, remove vote immediately
             if prev == choice:
-                # send a Remove‑Vote confirm view
-                view = RemoveVoteView(poll, interaction.user.id)
-                return await interaction.response.send_message(
-                    "Remove your vote for that option?", view=view, ephemeral=True
-                )
+                # decrement count & remove vote
+                poll['vote_count'][prev] -= 1
+                del poll['user_votes'][uid]
+                poll['total_votes'] = sum(poll['vote_count'].values())
+                # update embed
+                embed = poll['build_embed'](poll)
+                await interaction.response.edit_message(embed=embed, view=poll['view'])
+                # remove pending role
+                rp = discord.utils.get(interaction.user.roles, id=VOTE_PENDING_ROLE_ID)
+                if rp:
+                    try: await interaction.user.remove_roles(rp, reason="Vote removed")
+                    except: pass
+                return
+
+            # if they’d voted something else, change vote
             # else if different, ask to change
             if prev:
-                view = ConfirmChangeView(poll, interaction.user.id, choice)
-                return await interaction.response.send_message(
-                    "You’ve already voted—change to this option?", view=view, ephemeral=True
-                )
-
-                # register (or change) their one vote
-                prev = poll['user_votes'].get(uid)
-                # register (or change) their one vote
-                prev = poll['user_votes'].get(uid)
-                if prev:
-                    # remove old count
-                    poll['vote_count'][prev] -= 1
-
+                # decrement old, set new
+                poll['vote_count'][prev] -= 1
                 poll['user_votes'][uid] = choice
                 poll['vote_count'][choice] = poll['vote_count'].get(choice, 0) + 1
-                # exactly one vote total
-                poll['total_votes'] = 1
-
-                # ── now update the public embed so they see their vote immediately ────────
+                poll['total_votes'] = sum(poll['vote_count'].values())
                 embed = poll['build_embed'](poll)
-                # disable the other buttons if you wish, or just re‑use poll['view']
                 await interaction.response.edit_message(embed=embed, view=poll['view'])
-                # ── remove pending role once they’ve voted ─────────────────
-                vote_pending = discord.utils.get(interaction.user.roles, id=VOTE_PENDING_ROLE_ID)
-                if vote_pending:
-                    try:
-                        await interaction.user.remove_roles(vote_pending, reason="Voted in poll")
-                    except Exception:
-                        pass
+                # remove pending role
+                rp = discord.utils.get(interaction.user.roles, id=VOTE_PENDING_ROLE_ID)
+                if rp:
+                    try: await interaction.user.remove_roles(rp, reason="Vote changed")
+                    except: pass
                 return
 
             # ─── multiple-vote mode ─────────────────────────────────────
@@ -704,16 +697,18 @@ class PollCog(commands.Cog):
             return
 
         # assign @Vote_Pending to every @Player who hasn't voted
-        # use the cached member list so .roles is accurate
-        members = guild.members
-        for member in members:
-            # only consider members who have the PLAYER role
-            if player_role in member.roles:
-                # and who haven’t voted yet
+        # assign @Vote_Pending to every @Player who hasn't voted
+        player_role       = guild.get_role(PLAYER_ROLE_ID)
+        vote_pending_role = guild.get_role(VOTE_PENDING_ROLE_ID)
+
+        if player_role and vote_pending_role:
+            for member in player_role.members:
                 if member.id not in poll['user_votes']:
                     try:
                         await member.add_roles(vote_pending_role, reason="Poll reminder: please vote")
-                    except:
+                    except Exception:
+                        # log if you like, but swallow errors so one failure
+                        # doesn’t break the whole loop
                         pass
 
         # send a reminder ping
