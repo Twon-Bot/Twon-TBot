@@ -262,8 +262,8 @@ class SettingsView(discord.ui.View):
         cancel_btn.callback = cancel_cb
         confirm_view.add_item(cancel_btn)
 
-        # send the ephemeral confirmation prompt
-        await interaction.response.edit_message(
+        # show the confirm/cancel buttons via follow‑up after defer
+        await interaction.followup.send(
             content="Are you sure you want to end the poll?",
             view=confirm_view,
             ephemeral=True
@@ -328,8 +328,9 @@ class SettingsView(discord.ui.View):
         btn_no.callback = no_cb
         confirm_view.add_item(btn_no)
 
+        # show delete‑confirmation prompt
         await interaction.response.edit_message(
-            content="Are you sure you want to end the poll?",
+            content="Are you sure you want to **delete** the poll?",
             view=confirm_view,
             ephemeral=True
         )
@@ -469,6 +470,9 @@ class PollCog(commands.Cog):
                 desc += "\n*You may select **only one option** in this poll.*\n"
             else:
                 desc += "\n*You may select **multiple options** in this poll.*\n"
+            # ── One‑hour‑reminder status line ────────────────────────────────────
+            status = "**On**" if data.get('one_hour_reminder') else "Off"
+            desc += f"\n*One Hour Reminder: {status}*\n"
             
             embed = discord.Embed(
                 title=f"📊 {data['question']}",
@@ -696,8 +700,8 @@ class PollCog(commands.Cog):
             return
 
         # assign @Vote_Pending to every @Player who hasn't voted
-        # ensure we have up‑to‑date member list
-        members = [member async for member in guild.fetch_members(limit=None)]
+        # use the cached member list so .roles is accurate
+        members = guild.members
         for member in members:
             # only consider members who have the PLAYER role
             if player_role in member.roles:
