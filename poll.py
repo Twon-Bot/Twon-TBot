@@ -117,35 +117,60 @@ class EditPollModal(discord.ui.Modal, title="Edit Poll"):
         self.message_id = message_id
         # pre‑fill defaults
         self.question.default = poll_data['question']
-        self.mentions.default = poll_data.get('mention_text','')
+        self.mentions.default = poll_data.get('mention_text', '')
         et = poll_data.get('end_time')
         self.end_time.default = et.strftime("%m/%d %H:%M") if et else ""
         self.options.default = "\n".join(poll_data['options'])
 
     async def on_submit(self, interaction: discord.Interaction):
-        # update question & mentions
-        self.poll_data['question'] = self.question.value
-        self.poll_data['mention_text'] = self.mentions.value.strip()
-        # correctly set the boolean from the TextInput's .value
-        self.poll_data['mention'] = bool(self.mentions.value.strip())
+        # collect new values
+        new_opts = [line.strip() for line in self.options.value.splitlines() if line.strip()]
+        # validation: at least two options
+        if len(new_opts) < 2:
+            await interaction.response.send_message(
+                "❌ You must have at least two options to create a poll.",
+                ephemeral=True
+            )
+            return
 
-        # parse end_time if provided
+        # parse and validate end_time if provided
         if self.end_time.value.strip():
             tz = pytz.timezone(await self.cog.get_user_timezone(interaction.user.id))
-            dt = datetime.strptime(self.end_time.value, "%m/%d %H:%M").replace(year=datetime.now(tz).year)
-            self.poll_data['end_time'] = tz.localize(dt).astimezone(pytz.utc)
+            # build datetime in user's timezone
+            dt_input = datetime.strptime(self.end_time.value, "%m/%d %H:%M").replace(
+                year=datetime.now(tz).year
+            )
+            localized = tz.localize(dt_input)
+            now = datetime.now(tz)
+            if localized <= now:
+                await interaction.response.send_message(
+                    "❌ End time must be in the future.",
+                    ephemeral=True
+                )
+                return
+            # store in UTC
+            self.poll_data['end_time'] = localized.astimezone(pytz.utc)
+        else:
+            # remove end_time if blank
+            self.poll_data.pop('end_time', None)
+
+        # update question & mentions after validations
+        self.poll_data['question'] = self.question.value
+        self.poll_data['mention_text'] = self.mentions.value.strip()
+        self.poll_data['mention'] = bool(self.mentions.value.strip())
 
         # update options & preserve old counts
-        new_opts = [line.strip() for line in self.options.value.splitlines() if line.strip()]
-        old_counts = self.poll_data['vote_count']
-        self.poll_data['vote_count'] = {opt: old_counts.get(opt,0) for opt in new_opts}
+        old_counts = self.poll_data.get('vote_count', {})
+        # carry over existing votes for unchanged options
+        self.poll_data['vote_count'] = {opt: old_counts.get(opt, 0) for opt in new_opts}
         self.poll_data['options'] = new_opts
 
-        # rebuild embed & view
+        # rebuild embed & view, preserving vote counts in embed
         embed = self.poll_data['build_embed'](self.poll_data)
-        view  = self.poll_data['view']
+        view = self.poll_data['view']
         view.clear_items()
-        for i,opt in enumerate(new_opts):
+        for i, opt in enumerate(new_opts):
+            # button displays emoji only; vote counts shown in embed
             btn = discord.ui.Button(label=OPTION_EMOJIS[i], custom_id=opt)
             btn.callback = self.poll_data['button_callback']
             view.add_item(btn)
