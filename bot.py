@@ -106,6 +106,7 @@ async def load_extensions():
         await bot.load_extension('tracking')
         await bot.load_extension('write')
         await bot.load_extension('endcycle')
+        await bot.load_extension('delete')
         await bot.load_extension('addingschedule')
         await bot.load_extension('timestamp')
         await bot.load_extension('tony')
