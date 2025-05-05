@@ -263,7 +263,7 @@ class HelpCog(commands.Cog):
 
         elif topic in ['del', 'delete']:
             embed = discord.Embed(
-                title="!!del  //  delete",
+                title="!!del  //  !!delete",
                 description="Command to delete previous messages.\n`!!del → Deletes 1 message`\n`!!del X → deletes up to 10 messages`",
                 color=0xFFC107
             )
@@ -305,6 +305,14 @@ class HelpCog(commands.Cog):
             embed = discord.Embed(
                 title="!!livepackowner  //  !!livepackowners  //  !!lpo",
                 description="Command to output the message for new Live Pack Owners. This command works in two methods:\n**1.**`!!lpo MM/DD HH:MM` → Deletes your input, then outputs the message.\n**2.**`!!lpo` → Bot requests date/time input → Input `MM/DD HH:MM` → Bot deletes your input, then outputs message.",
+                color=0xFFC107
+            )
+            await send(embed=embed, ephemeral=is_inter)
+
+        elif topic in ['honorarymember', 'hmember', 'hmem', 'honorary', 'hm']:
+            embed = discord.Embed(
+                title="!!honorarymember  //  !!hmem  //  !!hm",
+                description="Lists all current players with the 'Honorary Member' role.",
                 color=0xFFC107
             )
             await send(embed=embed, ephemeral=is_inter)
