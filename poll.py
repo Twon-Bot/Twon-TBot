@@ -117,16 +117,13 @@ class EditPollModal(discord.ui.Modal, title="Edit Poll"):
         self.message_id = message_id
         # pre‑fill defaults
         self.question.default = poll_data['question']
-        # use stored raw mention_text for default, not boolean
         self.mentions.default = poll_data.get('mention_text', '')
-        # preserve original end_time string if available
         self.end_time.default = poll_data.get('end_time_str', '')
         self.options.default = "\n".join(poll_data['options'])
 
     async def on_submit(self, interaction: discord.Interaction):
         # collect new values
         new_opts = [line.strip() for line in self.options.value.splitlines() if line.strip()]
-        # validation: at least two options
         if len(new_opts) < 2:
             await interaction.response.send_message(
                 "❌ You must have at least two options to create a poll.",
@@ -148,26 +145,34 @@ class EditPollModal(discord.ui.Modal, title="Edit Poll"):
                     ephemeral=True
                 )
                 return
-            # store in UTC and raw string
             self.poll_data['end_time'] = localized.astimezone(pytz.utc)
             self.poll_data['end_time_str'] = self.end_time.value
         else:
             self.poll_data.pop('end_time', None)
             self.poll_data.pop('end_time_str', None)
 
-        # update question & mentions after validations
+        # update question & mentions
         self.poll_data['question'] = self.question.value
-        # preserve mention text exactly, avoid formatting errors
         mention_txt = self.mentions.value.strip()
         self.poll_data['mention_text'] = mention_txt
-        self.poll_data['mention'] = True if mention_txt else False
+        self.poll_data['mention'] = bool(mention_txt)
 
-        # update options & preserve old counts
+        # update options & preserve old counts, including renamed options
+        old_opts = self.poll_data.get('options', [])
         old_counts = self.poll_data.get('vote_count', {})
-        self.poll_data['vote_count'] = {opt: old_counts.get(opt, 0) for opt in new_opts}
+        new_counts = {}
+        for idx, opt in enumerate(new_opts):
+            if opt in old_counts:
+                new_counts[opt] = old_counts[opt]
+            elif idx < len(old_opts) and old_opts[idx] in old_counts:
+                # preserve count by position if name changed
+                new_counts[opt] = old_counts[old_opts[idx]]
+            else:
+                new_counts[opt] = 0
         self.poll_data['options'] = new_opts
+        self.poll_data['vote_count'] = new_counts
 
-        # rebuild embed & view, preserving vote counts in embed
+        # rebuild embed & view, preserving votes and mentions
         embed = self.poll_data['build_embed'](self.poll_data)
         view = self.poll_data['view']
         view.clear_items()
@@ -184,7 +189,8 @@ class EditPollModal(discord.ui.Modal, title="Edit Poll"):
 
         channel = self.cog.bot.get_channel(self.poll_data['channel_id'])
         msg = await channel.fetch_message(self.message_id)
-        await msg.edit(embed=embed, view=view)
+        # include mention_text as message content so edits apply
+        await msg.edit(content=self.poll_data.get('mention_text', None), embed=embed, view=view)
 
         await interaction.response.send_message("✅ Poll updated.", ephemeral=True)
 
