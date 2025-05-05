@@ -213,13 +213,17 @@ class SettingsView(discord.ui.View):
                 await select_inter.response.edit_message(content=f"Voters for {sel}:\n{text}", view=None, ephemeral=True)
         select.callback = select_cb    # ← bind here
         view.add_item(select)
-        await interaction.response.send_message(content="Select option to view voters:", view=view, ephemeral=True)
+        # replace the settings prompt with the voter‑select menu
+        await interaction.response.edit_message(
+            content="Select option to view voters:", view=view, ephemeral=True
+        )
 
     @discord.ui.button(label="End Poll", style=discord.ButtonStyle.primary)
     async def end_poll(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
         # now complete the interaction
-        await interaction.followup.send(content="Preparing to End Poll…", view=None, ephemeral=True)
+        await interaction.followup.send(
+            content="Preparing to End Poll…", view=None, ephemeral=True)
 
         # if already closed, just report when it ended
         if self.poll_data.get('closed'):
@@ -329,7 +333,7 @@ class SettingsView(discord.ui.View):
         confirm_view.add_item(btn_no)
 
         # show delete‑confirmation prompt
-        await interaction.response.edit_message(
+        await interaction.response.send_message(
             content="Are you sure you want to **delete** the poll?",
             view=confirm_view,
             ephemeral=True
@@ -472,7 +476,7 @@ class PollCog(commands.Cog):
                 desc += "\n*You may select **multiple options** in this poll.*\n"
             # ── One‑hour‑reminder status line ────────────────────────────────────
             status = "**On**" if data.get('one_hour_reminder') else "Off"
-            desc += f"\n*One Hour Reminder: {status}*\n"
+            desc += f"*One Hour Reminder: {status}*\n"
             
             embed = discord.Embed(
                 title=f"📊 {data['question']}",
