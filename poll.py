@@ -121,20 +121,11 @@ class EditPollModal(discord.ui.Modal, title="Edit Poll"):
         self.poll_data = poll_data
         self.message_id = message_id
         # pre‑fill defaults
-        self.question.default = poll_data['question']
+        self.question.default = poll_data.get('question', '')
         self.mentions.default = poll_data.get('mention_text', '')
-        # if an end_time_str was stored, use it; otherwise format existing datetime
-        if 'end_time_str' in poll_data:
-            self.end_time.default = poll_data['end_time_str']
-        elif 'end_time' in poll_data:
-            # convert UTC to user's timezone string
-            # assume cog.get_user_timezone can be called sync for default display
-            tz = pytz.timezone(self.cog.default_timezone)
-            et_local = poll_data['end_time'].astimezone(tz)
-            self.end_time.default = et_local.strftime("%m/%d %H:%M")
-        else:
-            self.end_time.default = ''
-        self.options.default = "\n".join(poll_data['options'])
+        # always use the stored end_time_str if present
+        self.end_time.default = poll_data.get('end_time_str', '')
+        self.options.default = "\n".join(poll_data.get('options', []))
         # keep track of original end_time string to detect changes
         self._original_end_str = self.end_time.default
 
@@ -198,7 +189,7 @@ class EditPollModal(discord.ui.Modal, title="Edit Poll"):
                 'options': new_opts,
                 'vote_count': new_counts
             })
-            if new_end_utc:
+            if new_end_utc is not None:
                 self.poll_data['end_time'] = new_end_utc
                 self.poll_data['end_time_str'] = new_end_str
             else:
@@ -217,7 +208,7 @@ class EditPollModal(discord.ui.Modal, title="Edit Poll"):
         # rebuild embed & a fresh view, preserving votes and mentions
         embed = self.poll_data['build_embed'](self.poll_data)
         new_view = discord.ui.View()
-        for i, opt in enumerate(new_opts):
+        for i, opt in enumerate(self.poll_data['options']):
             btn = discord.ui.Button(label=OPTION_EMOJIS[i], custom_id=opt)
             btn.callback = self.poll_data['button_callback']
             new_view.add_item(btn)
