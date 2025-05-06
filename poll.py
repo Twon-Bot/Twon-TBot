@@ -203,8 +203,9 @@ class EditPollModal(discord.ui.Modal, title="Edit Poll"):
                 self.poll_data['end_time'] = new_end_utc
                 self.poll_data['end_time_str'] = new_end_str
             else:
-                self.poll_data.pop('end_time', None)
-                self.poll_data.pop('end_time_str', None)
+                # clear end time fields without removing keys to avoid build_embed errors
+                self.poll_data['end_time'] = None
+                self.poll_data['end_time_str'] = None
 
         except Exception as e:
             log.exception(f"EditPollModal error: {e}")
@@ -240,7 +241,7 @@ class EditPollModal(discord.ui.Modal, title="Edit Poll"):
 
         await interaction.response.send_message("✅ Poll updated.", ephemeral=True)
         self.poll_data['view'] = new_view
-        
+                
 class ConfirmEndPollModal(discord.ui.Modal, title="Confirm End Poll"):
     # TextInput for user confirmation; must type exactly 'END'
     confirmation = discord.ui.TextInput(
