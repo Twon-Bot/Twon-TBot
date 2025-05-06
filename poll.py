@@ -268,14 +268,25 @@ class ConfirmEndPollModal(discord.ui.Modal, title="Confirm End Poll"):
             self.poll_data['end_time'] = datetime.utcnow()
             self.poll_data['ended_by'] = interaction.user.display_name
 
-            # Disable every button in the view
+            # Disable only voting and "add option" buttons; leave settings enabled
             for child in self.poll_data['view'].children:
                 if isinstance(child, discord.ui.Button):
-                    child.disabled = True
+                    # Identify settings button by custom_id or label
+                    if getattr(child, 'custom_id', None) == 'settings' or child.label == 'Settings':
+                        child.disabled = False
+                    else:
+                        child.disabled = True
 
-            # Rebuild embed with closed indicator
+            # Rebuild embed with closed indicator in description only
             embed = self.poll_data['build_embed'](self.poll_data)
-            embed.title = f"❌ Poll closed — {embed.title or ''}"
+            # Prepend closed line above options
+            closed_line = "❌ Poll closed"
+            # Insert into embed description (or create one)
+            if embed.description:
+                embed.description = f"{closed_line}\n{embed.description}"
+            else:
+                embed.description = closed_line
+            # Leave embed.title unchanged
 
             # Fetch and edit the original poll message by ID
             channel = interaction.channel or self.cog.bot.get_channel(self.poll_data.get('channel_id'))
@@ -297,7 +308,7 @@ class ConfirmEndPollModal(discord.ui.Modal, title="Confirm End Poll"):
         except Exception as e:
             # Log any errors
             print(f"Error updating poll message: {e}")
-            
+
 class SettingsView(discord.ui.View):
     def __init__(self, cog, poll_data, message_id):
         super().__init__(timeout=None)
@@ -364,7 +375,7 @@ class SettingsView(discord.ui.View):
         await interaction.response.send_modal(
             ConfirmEndPollModal(self.cog, self.poll_data, self.message_id)
         )
-
+        
     @discord.ui.button(label="Export Votes", style=discord.ButtonStyle.primary)
     async def export_votes(self, interaction: discord.Interaction, button: discord.ui.Button):
         # no defer — respond immediately with file
