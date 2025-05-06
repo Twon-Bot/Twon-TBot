@@ -306,26 +306,30 @@ class SettingsView(discord.ui.View):
         # Confirm button
         confirm_btn = discord.ui.Button(label="Confirm End Poll", style=discord.ButtonStyle.danger)
         async def confirm_cb(confirm_inter: discord.Interaction):
-            # Immediately acknowledge to avoid timeout
+            # Acknowledge immediately
             await confirm_inter.response.edit_message(content="✅ Poll ended.", view=None)
-            # Now perform end-poll tasks in background
+            # Perform end-poll tasks
             try:
-                # Mark closed and record who ended it
+                # mark closed, record time & user
                 self.poll_data['closed'] = True
                 self.poll_data['end_time'] = datetime.datetime.utcnow()
                 self.poll_data['ended_by'] = confirm_inter.user.display_name
-                # Disable all non-settings buttons in the original view
+                # disable all non-settings buttons
                 for item in list(self.poll_data['view'].children):
                     if getattr(item, 'custom_id', None) != 'settings':
                         item.disabled = True
-                # Edit the original poll message
+                # update original poll message
                 channel = self.cog.bot.get_channel(self.poll_data['channel_id'])
                 poll_msg = await channel.fetch_message(self.message_id)
                 await poll_msg.edit(embed=self.poll_data['build_embed'](self.poll_data), view=self.poll_data['view'])
-                # Remove from database
+                # remove from DB
                 await self.cog.bot.pg_pool.execute("DELETE FROM polls WHERE id = $1", self.poll_data["id"])
+                # schedule removal from memory after 24h
+                async def purge():
+                    await asyncio.sleep(86400)
+                    self.cog.polls.pop(self.poll_data['id'], None)
+                self.cog.bot.loop.create_task(purge())
             except Exception as e:
-                # Log error; cannot edit again here
                 print(f"Error ending poll: {e}")
         confirm_btn.callback = confirm_cb
         confirm_view.add_item(confirm_btn)
@@ -333,7 +337,6 @@ class SettingsView(discord.ui.View):
         # Cancel button
         cancel_btn = discord.ui.Button(label="Cancel", style=discord.ButtonStyle.secondary)
         async def cancel_cb(cancel_inter: discord.Interaction):
-            # Replace confirmation prompt with cancellation
             await cancel_inter.response.edit_message(content="❌ Action cancelled.", view=None)
             confirm_view.stop()
         cancel_btn.callback = cancel_cb
