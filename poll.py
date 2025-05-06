@@ -476,7 +476,7 @@ class PollCog(commands.Cog):
             self.bot.loop.create_task(self.schedule_poll_end(poll['id']))
             if poll.get("one_hour_reminder"):
                 self.bot.loop.create_task(self.schedule_poll_reminder(poll['id']))
-
+                
     async def _create_poll(
         self,
         ctx,
@@ -719,6 +719,10 @@ class PollCog(commands.Cog):
         )
         
     async def schedule_poll_end(self, message_id):
+        """
+        When end_time is reached: mark closed, disable voting, update embed & view,
+        then after 24h remove from memory.
+        """
         poll = self.polls.get(message_id)
         if not poll or not poll.get('end_time'):
             return
@@ -726,15 +730,25 @@ class PollCog(commands.Cog):
         wait = (poll['end_time'] - now).total_seconds()
         if wait > 0:
             await asyncio.sleep(wait)
+
+        # mark as closed
         poll['closed'] = True
 
+        # disable all buttons except settings
+        for item in poll['view'].children:
+            # each item is a Button
+            if getattr(item, 'custom_id', None) != 'settings':
+                item.disabled = True
+
+        # fetch channel & message, then apply updated embed and disabled view
         channel = self.bot.get_channel(poll['channel_id'])
         try:
             msg = await channel.fetch_message(message_id)
             await msg.edit(embed=poll['build_embed'](poll), view=poll['view'])
-        except:
+        except Exception:
             pass
 
+        # wait 24h then purge
         await asyncio.sleep(86400)
         self.polls.pop(message_id, None)
 
