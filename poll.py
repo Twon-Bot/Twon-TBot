@@ -308,6 +308,8 @@ class SettingsView(discord.ui.View):
         async def confirm_cb(confirm_inter: discord.Interaction):
             # Acknowledge immediately
             await confirm_inter.response.edit_message(content="✅ Poll ended.", view=None)
+                # Also update the confirmation ephemeral to include closed header (for consistency)
+                # Perform the UI update on the original poll message below
             # Perform end-poll tasks
             try:
                 # mark closed, record time & user
@@ -321,7 +323,15 @@ class SettingsView(discord.ui.View):
                 # update original poll message
                 channel = self.cog.bot.get_channel(self.poll_data['channel_id'])
                 poll_msg = await channel.fetch_message(self.message_id)
-                await poll_msg.edit(embed=self.poll_data['build_embed'](self.poll_data), view=self.poll_data['view'])
+                # rebuild embed with closed header
+                embed = self.cog.build_embed(self.poll_data)
+                # prepend closed indicator to title or description as needed
+                try:
+                    embed.title = f"❌ Poll closed — {embed.title}"
+                except Exception:
+                    # if no title, add at top of description
+                    embed.description = f"❌ Poll closed{embed.description or ''}"
+                await poll_msg.edit(embed=embed, view=self.poll_data['view'])
                 # remove from DB
                 await self.cog.bot.pg_pool.execute("DELETE FROM polls WHERE id = $1", self.poll_data["id"])
                 # schedule removal from memory after 24h
