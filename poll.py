@@ -609,20 +609,16 @@ class PollCog(commands.Cog):
             if poll['voting_type'] == 'single':
                 # If clicking the same option: ask confirmation to remove
                 if prev == choice:
-                    # Build a confirm/cancel view for removal
                     view = discord.ui.View(timeout=30)
                     btn_confirm = discord.ui.Button(label="Confirm Removal", style=discord.ButtonStyle.danger)
                     btn_cancel = discord.ui.Button(label="Cancel", style=discord.ButtonStyle.secondary)
 
                     async def confirm_cb(i: discord.Interaction):
-                        # perform removal
                         poll['vote_count'][choice] -= 1
                         del poll['user_votes'][uid]
                         poll['total_votes'] = sum(poll['vote_count'].values())
-                        # update embed
                         embed = poll['build_embed'](poll)
                         await interaction.message.edit(embed=embed, view=poll['view'])
-                        # replace ephemeral
                         await i.response.edit_message(content="✅ Vote removed.", view=None)
                     async def cancel_cb(i: discord.Interaction):
                         await i.response.edit_message(content="❌ Vote removal cancelled.", view=None)
@@ -631,7 +627,9 @@ class PollCog(commands.Cog):
                     btn_cancel.callback = cancel_cb
                     view.add_item(btn_confirm)
                     view.add_item(btn_cancel)
-                    return await interaction.response.send_message("Are you sure you want to remove your vote?", view=view, ephemeral=True)
+                    return await interaction.response.send_message(
+                        "Are you sure you want to remove your vote?", view=view, ephemeral=True
+                    )
 
                 # If clicking a different option: ask confirmation to change
                 if prev:
@@ -640,7 +638,6 @@ class PollCog(commands.Cog):
                     btn_cancel = discord.ui.Button(label="Cancel", style=discord.ButtonStyle.secondary)
 
                     async def confirm_change(i: discord.Interaction):
-                        # change vote
                         poll['vote_count'][prev] -= 1
                         poll['user_votes'][uid] = choice
                         poll['vote_count'][choice] = poll['vote_count'].get(choice, 0) + 1
@@ -655,7 +652,9 @@ class PollCog(commands.Cog):
                     btn_cancel.callback = cancel_change
                     view.add_item(btn_confirm)
                     view.add_item(btn_cancel)
-                    return await interaction.response.send_message("You already voted. Change your vote?", view=view, ephemeral=True)
+                    return await interaction.response.send_message(
+                        "You already voted. Change your vote?", view=view, ephemeral=True
+                    )
 
                 # First-time vote: register immediately
                 poll['user_votes'][uid] = choice
@@ -663,7 +662,6 @@ class PollCog(commands.Cog):
                 poll['total_votes'] = sum(poll['vote_count'].values())
                 embed = poll['build_embed'](poll)
                 await interaction.response.edit_message(embed=embed, view=poll['view'])
-                # remove pending role if present
                 rp = discord.utils.get(interaction.user.roles, id=VOTE_PENDING_ROLE_ID)
                 if rp:
                     try: await interaction.user.remove_roles(rp, reason="Voted")
@@ -672,21 +670,29 @@ class PollCog(commands.Cog):
 
             # ─── multiple-vote mode ─────────────────────────────────────
             if poll['voting_type'] == 'multiple':
+                # Ensure each option can only be voted once per user
                 user_list = poll['user_votes'].setdefault(uid, [])
                 if choice in user_list:
+                    # Toggle off: remove existing vote
                     user_list.remove(choice)
                     poll['vote_count'][choice] -= 1
                 else:
+                    # Toggle on: add vote only once per option
+                    user_list.append(choice)
                     poll['vote_count'][choice] = poll['vote_count'].get(choice, 0) + 1
+
+                # Recompute totals and update embed
                 poll['total_votes'] = sum(poll['vote_count'].values())
                 embed = poll['build_embed'](poll)
                 await interaction.response.edit_message(embed=embed, view=poll['view'])
+
+                # Remove pending-role if present
                 vote_pending = discord.utils.get(interaction.user.roles, id=VOTE_PENDING_ROLE_ID)
                 if vote_pending:
                     try: await interaction.user.remove_roles(vote_pending, reason="Voted in poll")
                     except: pass
                 return
-            
+                        
         # Assemble view
         view = discord.ui.View(timeout=None)
         # Option buttons
