@@ -262,7 +262,7 @@ class ConfirmEndPollModal(discord.ui.Modal, title="Confirm End Poll"):
         # Perform end-poll tasks
         try:
             self.poll_data['closed'] = True
-            self.poll_data['end_time'] = datetime.datetime.utcnow()
+            self.poll_data['end_time'] = datetime.utcnow()
             self.poll_data['ended_by'] = interaction.user.display_name
 
             # disable all non-settings buttons
