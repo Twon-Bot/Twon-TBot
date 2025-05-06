@@ -306,39 +306,44 @@ class SettingsView(discord.ui.View):
         # Confirm button
         confirm_btn = discord.ui.Button(label="Confirm End Poll", style=discord.ButtonStyle.danger)
         async def confirm_cb(confirm_inter: discord.Interaction):
-            # Acknowledge immediately
+            # Acknowledge immediate
             await confirm_inter.response.edit_message(content="✅ Poll ended.", view=None)
-                # Also update the confirmation ephemeral to include closed header (for consistency)
-                # Perform the UI update on the original poll message below
-            # Perform end-poll tasks
+            # Now update the actual poll message
             try:
                 # mark closed, record time & user
                 self.poll_data['closed'] = True
                 self.poll_data['end_time'] = datetime.datetime.utcnow()
                 self.poll_data['ended_by'] = confirm_inter.user.display_name
+
                 # disable all non-settings buttons
                 for item in list(self.poll_data['view'].children):
                     if getattr(item, 'custom_id', None) != 'settings':
                         item.disabled = True
-                # update original poll message
+
+                # rebuild embed with closed header
+                embed = self.poll_data['build_embed'](self.poll_data)
+                # prepend closed indicator
+                if embed.title:
+                    embed.title = f"❌ Poll closed — {embed.title}"
+                else:
+                    embed.description = f"❌ Poll closed\n{embed.description or ''}"
+
+                # edit original poll message
                 channel = self.cog.bot.get_channel(self.poll_data['channel_id'])
                 poll_msg = await channel.fetch_message(self.message_id)
-                # rebuild embed with closed header
-                embed = self.cog.build_embed(self.poll_data)
-                # prepend closed indicator to title or description as needed
-                try:
-                    embed.title = f"❌ Poll closed — {embed.title}"
-                except Exception:
-                    # if no title, add at top of description
-                    embed.description = f"❌ Poll closed{embed.description or ''}"
                 await poll_msg.edit(embed=embed, view=self.poll_data['view'])
-                # remove from DB
-                await self.cog.bot.pg_pool.execute("DELETE FROM polls WHERE id = $1", self.poll_data["id"])
+
+                # remove from database
+                await self.cog.bot.pg_pool.execute(
+                    "DELETE FROM polls WHERE id = $1", self.poll_data['id']
+                )
+
                 # schedule removal from memory after 24h
                 async def purge():
                     await asyncio.sleep(86400)
                     self.cog.polls.pop(self.poll_data['id'], None)
                 self.cog.bot.loop.create_task(purge())
+
             except Exception as e:
                 print(f"Error ending poll: {e}")
         confirm_btn.callback = confirm_cb
