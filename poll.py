@@ -277,15 +277,17 @@ class ConfirmEndPollModal(discord.ui.Modal, title="Confirm End Poll"):
                     else:
                         child.disabled = True
 
-            # Rebuild embed with closed indicator in description only
+            # Rebuild embed with closed indicator in description only, ensuring no duplicates
             embed = self.poll_data['build_embed'](self.poll_data)
-            # Prepend closed line above options
             closed_line = "❌ Poll closed"
-            # Insert into embed description (or create one)
-            if embed.description:
-                embed.description = f"{closed_line}\n{embed.description}"
-            else:
-                embed.description = closed_line
+            # Normalize description by stripping existing closed lines
+            desc = embed.description or ""
+            lines = desc.splitlines()
+            # Remove any leading closed_line entries
+            while lines and lines[0] == closed_line:
+                lines.pop(0)
+            # Prepend single closed_line
+            embed.description = f"{closed_line}\n" + "\n".join(lines)
             # Leave embed.title unchanged
 
             # Fetch and edit the original poll message by ID
