@@ -639,6 +639,25 @@ class PollCog(commands.Cog):
                     except: pass
                 return
 
+            # ─── single‑vote first‑vote ─────────────────────────────────────
+            if poll['voting_type'] == 'single' and prev is None:
+                # record their vote
+                poll['user_votes'][uid] = choice
+                poll['vote_count'][choice] = poll['vote_count'].get(choice, 0) + 1
+                poll['total_votes'] = sum(poll['vote_count'].values())
+
+                # rebuild and push updated embed + buttons
+                embed = poll['build_embed'](poll)
+                await interaction.response.edit_message(embed=embed, view=poll['view'])
+
+                # remove pending‑vote role if present
+                rp = discord.utils.get(interaction.user.roles, id=VOTE_PENDING_ROLE_ID)
+                if rp:
+                    try: await interaction.user.remove_roles(rp, reason="Voted")
+                    except: pass
+
+                return
+
             # ─── multiple-vote mode ─────────────────────────────────────
             if poll['voting_type'] == 'multiple':
                 user_list = poll['user_votes'].setdefault(uid, [])
