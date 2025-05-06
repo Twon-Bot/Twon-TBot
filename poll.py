@@ -247,43 +247,42 @@ class ConfirmEndPollModal(discord.ui.Modal, title="Confirm End Poll"):
 
     def __init__(self, cog, poll_data, message_id):
         super().__init__()
-        # Store reference to the cog, poll metadata, and original message ID
+        # Keep cog, poll metadata, and original message ID for edits
         self.cog = cog
         self.poll_data = poll_data
         self.message_id = message_id
 
     async def on_submit(self, interaction: discord.Interaction):
-        # Verify the user input matches 'END' (case‑insensitive)
+        # If confirmation text isn't exactly 'END', notify and stop
         if self.confirmation.value.upper() != 'END':
             return await interaction.response.send_message(
                 "❌ You must type 'END' to confirm.", ephemeral=True
             )
 
-        # Acknowledge successful submission
-        await interaction.response.send_message("✅ Poll ended.", ephemeral=True)
+        # Defer the response so we can edit the poll message without collision
+        await interaction.response.defer(ephemeral=True)
 
-        # Perform update in followup to avoid mixing with modal response
         try:
-            # Mark poll as closed and record metadata
+            # Mark poll closed in memory
             self.poll_data['closed'] = True
             self.poll_data['end_time'] = datetime.utcnow()
             self.poll_data['ended_by'] = interaction.user.display_name
 
-            # Disable all buttons in the view
+            # Disable every button in the view
             for child in self.poll_data['view'].children:
                 if isinstance(child, discord.ui.Button):
                     child.disabled = True
 
-            # Rebuild the embed to show a closed indicator
+            # Rebuild embed with closed indicator
             embed = self.poll_data['build_embed'](self.poll_data)
             embed.title = f"❌ Poll closed — {embed.title or ''}"
 
-            # Edit the original poll message directly
-            # interaction.message refers to the message where the modal was triggered
-            orig_msg = interaction.message
+            # Fetch and edit the original poll message by ID
+            channel = interaction.channel or self.cog.bot.get_channel(self.poll_data.get('channel_id'))
+            orig_msg = await channel.fetch_message(self.message_id)
             await orig_msg.edit(embed=embed, view=self.poll_data['view'])
 
-            # Clean up storage: remove from DB and in-memory cache
+            # Cleanup: delete from DB and schedule in-memory purge
             await self.cog.bot.pg_pool.execute(
                 "DELETE FROM polls WHERE id = $1", self.poll_data['id']
             )
@@ -292,8 +291,11 @@ class ConfirmEndPollModal(discord.ui.Modal, title="Confirm End Poll"):
                 self.cog.polls.pop(self.poll_data['id'], None)
             self.cog.bot.loop.create_task(purge())
 
+            # Finally, notify user of successful closure
+            await interaction.followup.send("✅ Poll ended.", ephemeral=True)
+
         except Exception as e:
-            # Log any errors encountered during closure process
+            # Log any errors
             print(f"Error updating poll message: {e}")
             
 class SettingsView(discord.ui.View):
@@ -352,13 +354,13 @@ class SettingsView(discord.ui.View):
 
     @discord.ui.button(label="End Poll", style=discord.ButtonStyle.primary)
     async def end_poll(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # If poll is already closed, inform the user who ended it
+        # Prevent re-closing
         if self.poll_data.get('closed'):
             ended_by = self.poll_data.get('ended_by', 'unknown user')
             return await interaction.response.send_message(
                 f"❌ Poll already ended by {ended_by}.", ephemeral=True
             )
-        # Otherwise, prompt for confirmation via modal
+        # Show confirmation modal
         await interaction.response.send_modal(
             ConfirmEndPollModal(self.cog, self.poll_data, self.message_id)
         )
