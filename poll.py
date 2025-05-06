@@ -415,7 +415,7 @@ class SettingsView(discord.ui.View):
         # Ensure only the poll author can delete
         if interaction.user.id != self.poll_data['author_id']:
             return await interaction.followup.send("Only creator can delete.", ephemeral=True)
-
+#
         # Create a confirmation view with two buttons
         confirm_view = discord.ui.View(timeout=30)
 
