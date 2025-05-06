@@ -124,15 +124,20 @@ class EditPollModal(discord.ui.Modal, title="Edit Poll"):
         self.question.default = poll_data.get('question', '')
         self.mentions.default = poll_data.get('mention_text', '')
 
-        # pre‑fill end_time: use stored string, else format existing datetime
-        if 'end_time_str' in poll_data:
-            default_end = poll_data['end_time_str'] or ''
-        elif 'end_time' in poll_data:
-            # format UTC datetime to MM/DD HH:MM
-            default_end = poll_data['end_time'].strftime("%m/%d %H:%M")
-        else:
-            default_end = ''
+                # pre‑fill end_time: use stored string if present, else try formatting existing UTC datetime
+        default_end = ''
+        # use explicit get to avoid missing-key errors
+        if self.poll_data.get('end_time_str'):
+            default_end = self.poll_data.get('end_time_str') or ''
+        elif self.poll_data.get('end_time'):
+            # safely format UTC datetime; wrap in try to prevent failures if wrong type
+            try:
+                default_end = self.poll_data['end_time'].strftime("%m/%d %H:%M")
+            except Exception:
+                default_end = ''
+        # assign default and remember original for comparison
         self.end_time.default = default_end
+        self._original_end_str = default_end
         self._original_end_str = default_end
 
         # pre‑fill options
@@ -235,7 +240,7 @@ class EditPollModal(discord.ui.Modal, title="Edit Poll"):
 
         await interaction.response.send_message("✅ Poll updated.", ephemeral=True)
         self.poll_data['view'] = new_view
-
+        
 class ConfirmEndPollModal(discord.ui.Modal, title="Confirm End Poll"):
     # TextInput for user confirmation; must type exactly 'END'
     confirmation = discord.ui.TextInput(
