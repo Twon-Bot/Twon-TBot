@@ -237,66 +237,65 @@ class EditPollModal(discord.ui.Modal, title="Edit Poll"):
         self.poll_data['view'] = new_view
 
 class ConfirmEndPollModal(discord.ui.Modal, title="Confirm End Poll"):
+    # TextInput for user confirmation; must type exactly 'END'
     confirmation = discord.ui.TextInput(
-        label="Type 'END' to confirm poll closure", 
-        style=discord.TextStyle.short, 
-        min_length=3, 
+        label="Type 'END' to confirm poll closure",
+        style=discord.TextStyle.short,
+        min_length=3,
         max_length=3
     )
 
     def __init__(self, cog, poll_data, message_id):
         super().__init__()
+        # Store reference to the cog, poll metadata, and original message ID
         self.cog = cog
         self.poll_data = poll_data
         self.message_id = message_id
 
     async def on_submit(self, interaction: discord.Interaction):
-        # Only proceed if user typed the exact keyword
+        # Verify the user input matches 'END' (case‑insensitive)
         if self.confirmation.value.upper() != 'END':
             return await interaction.response.send_message(
                 "❌ You must type 'END' to confirm.", ephemeral=True
             )
-        # Acknowledge and close modal
+
+        # Acknowledge successful submission
         await interaction.response.send_message("✅ Poll ended.", ephemeral=True)
 
-        # Perform end-poll tasks
+        # Perform update in followup to avoid mixing with modal response
         try:
+            # Mark poll as closed and record metadata
             self.poll_data['closed'] = True
             self.poll_data['end_time'] = datetime.utcnow()
             self.poll_data['ended_by'] = interaction.user.display_name
 
-            # disable all non-settings buttons
-            for item in list(self.poll_data['view'].children):
-                if getattr(item, 'custom_id', None) != 'settings':
-                    item.disabled = True
+            # Disable all buttons in the view
+            for child in self.poll_data['view'].children:
+                if isinstance(child, discord.ui.Button):
+                    child.disabled = True
 
-            # rebuild embed with closed header
-            embed = self.cog.build_embed(self.poll_data)
-            if embed.title:
-                embed.title = f"❌ Poll closed — {embed.title}"
-            else:
-                embed.description = f"❌ Poll closed\n{embed.description or ''}"
+            # Rebuild the embed to show a closed indicator
+            embed = self.poll_data['build_embed'](self.poll_data)
+            embed.title = f"❌ Poll closed — {embed.title or ''}"
 
-            # edit the original poll message
-            channel = self.cog.bot.get_channel(self.poll_data.get('channel_id')) or interaction.channel
-            msg = await channel.fetch_message(self.message_id)
-            await msg.edit(embed=embed, view=self.poll_data['view'],
-                           allowed_mentions=discord.AllowedMentions(everyone=True, roles=True, users=True))
+            # Edit the original poll message directly
+            # interaction.message refers to the message where the modal was triggered
+            orig_msg = interaction.message
+            await orig_msg.edit(embed=embed, view=self.poll_data['view'])
 
-            # delete from database
+            # Clean up storage: remove from DB and in-memory cache
             await self.cog.bot.pg_pool.execute(
                 "DELETE FROM polls WHERE id = $1", self.poll_data['id']
             )
-
-            # schedule in-memory purge
             async def purge():
                 await asyncio.sleep(86400)
                 self.cog.polls.pop(self.poll_data['id'], None)
             self.cog.bot.loop.create_task(purge())
 
         except Exception as e:
-            print(f"Error in ConfirmEndPollModal.on_submit: {e}")
-
+            # Log any errors encountered during closure process
+            print(f"Error updating poll message: {e}")
+            
 class SettingsView(discord.ui.View):
     def __init__(self, cog, poll_data, message_id):
         super().__init__(timeout=None)
@@ -353,13 +352,13 @@ class SettingsView(discord.ui.View):
 
     @discord.ui.button(label="End Poll", style=discord.ButtonStyle.primary)
     async def end_poll(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # If already closed, inform
+        # If poll is already closed, inform the user who ended it
         if self.poll_data.get('closed'):
             ended_by = self.poll_data.get('ended_by', 'unknown user')
             return await interaction.response.send_message(
                 f"❌ Poll already ended by {ended_by}.", ephemeral=True
             )
-        # Launch confirmation modal
+        # Otherwise, prompt for confirmation via modal
         await interaction.response.send_modal(
             ConfirmEndPollModal(self.cog, self.poll_data, self.message_id)
         )
