@@ -107,7 +107,7 @@ log = logging.getLogger(__name__)
 
 class EditPollModal(discord.ui.Modal, title="Edit Poll"):
     question = discord.ui.TextInput(label="Question", max_length=200)
-    mentions = discord.ui.TextInput(label="Mentions (e.g. <@&1334747903427870742> for @Player)", required=False)
+    mentions = discord.ui.TextInput(label="Mentions (In the format: <@&###########> )", required=False)
     end_time = discord.ui.TextInput(label="End Time MM/DD HH:MM", required=False)
     options = discord.ui.TextInput(
         label="Options (one per line)",
