@@ -327,9 +327,14 @@ class SettingsView(discord.ui.View):
                 else:
                     embed.description = f"❌ Poll closed\n{embed.description or ''}"
 
+                # fetch channel, fallback to interaction channel if missing
+                channel = self.cog.bot.get_channel(self.poll_data.get('channel_id'))
+                if channel is None:
+                    channel = confirm_inter.channel  # fallback
                 # edit original poll message
-                channel = self.cog.bot.get_channel(self.poll_data['channel_id'])
                 poll_msg = await channel.fetch_message(self.message_id)
+                # store channel_id if absent
+                self.poll_data.setdefault('channel_id', channel.id)
                 await poll_msg.edit(embed=embed, view=self.poll_data['view'])
 
                 # remove from database
