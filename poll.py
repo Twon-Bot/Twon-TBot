@@ -640,31 +640,32 @@ class PollCog(commands.Cog):
                 return
 
             # ─── multiple-vote mode ─────────────────────────────────────
-            user_list = poll['user_votes'].setdefault(uid, [])
+            if poll['voting_type'] == 'multiple':
+                user_list = poll['user_votes'].setdefault(uid, [])
+                if choice in user_list:
+                    # toggle off
+                    user_list.remove(choice)
+                    poll['vote_count'][choice] -= 1
+                else:
+                    # toggle on
+                    poll['vote_count'][choice] = poll['vote_count'].get(choice, 0) + 1
 
-            if choice in user_list:
-                # toggle off
-                user_list.remove(choice)
-                poll['vote_count'][choice] -= 1
-            else:
-                # toggle on
-                user_list.append(choice)
-                poll['vote_count'][choice] = poll['vote_count'].get(choice, 0) + 1
+                # recompute total votes for accurate percentages
+                poll['total_votes'] = sum(poll['vote_count'].values())
 
-            # recompute total votes as sum of all counts for correct percentages
-            poll['total_votes'] = sum(poll['vote_count'].values())
+                # rebuild and push the updated embed + view
+                embed = poll['build_embed'](poll)
+                await interaction.response.edit_message(embed=embed, view=poll['view'])
 
-            embed = poll['build_embed'](poll)
-            await interaction.response.edit_message(embed=embed, view=poll['view'])
+                # remove the pending‑vote role if present
+                vote_pending = discord.utils.get(interaction.user.roles, id=VOTE_PENDING_ROLE_ID)
+                if vote_pending:
+                    try:
+                        await interaction.user.remove_roles(vote_pending, reason="Voted in poll")
+                    except:
+                        pass
 
-            # after updating poll['user_votes']…
-            # remove pending role
-            vote_pending = discord.utils.get(interaction.user.roles, id=1366303580591755295)
-            if vote_pending:
-                try:
-                    await interaction.user.remove_roles(vote_pending, reason="Voted in poll")
-                except:
-                    pass
+                return
 
         # Assemble view
         view = discord.ui.View(timeout=None)
