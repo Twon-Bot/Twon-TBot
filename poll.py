@@ -320,9 +320,8 @@ class SettingsView(discord.ui.View):
                     if getattr(item, 'custom_id', None) != 'settings':
                         item.disabled = True
 
-                # rebuild embed with closed header
-                embed = self.poll_data['build_embed'](self.poll_data)
-                # prepend closed indicator
+                # rebuild embed with closed header using Cog method
+                embed = self.cog.build_embed(self.poll_data)
                 if embed.title:
                     embed.title = f"❌ Poll closed — {embed.title}"
                 else:
@@ -345,7 +344,8 @@ class SettingsView(discord.ui.View):
                 self.cog.bot.loop.create_task(purge())
 
             except Exception as e:
-                print(f"Error ending poll: {e}")
+                # log exception for troubleshooting
+                print(f"Error ending poll in confirm_cb: {e}")
         confirm_btn.callback = confirm_cb
         confirm_view.add_item(confirm_btn)
 
