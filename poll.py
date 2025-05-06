@@ -377,7 +377,7 @@ class SettingsView(discord.ui.View):
         await interaction.response.send_modal(
             ConfirmEndPollModal(self.cog, self.poll_data, self.message_id)
         )
-        
+
     @discord.ui.button(label="Export Votes", style=discord.ButtonStyle.primary)
     async def export_votes(self, interaction: discord.Interaction, button: discord.ui.Button):
         # no defer — respond immediately with file
@@ -412,32 +412,38 @@ class SettingsView(discord.ui.View):
 
     @discord.ui.button(label="Delete", style=discord.ButtonStyle.danger)
     async def delete(self, interaction: discord.Interaction, button):
-        # no defer - open confirm view immediately
-
+        # Ensure only the poll author can delete
         if interaction.user.id != self.poll_data['author_id']:
             return await interaction.followup.send("Only creator can delete.", ephemeral=True)
 
+        # Create a confirmation view with two buttons
         confirm_view = discord.ui.View(timeout=30)
+
+        # "Confirm Delete" button
         btn_yes = discord.ui.Button(label="Confirm Delete", style=discord.ButtonStyle.danger)
-        async def yes_cb(i):
+        async def yes_cb(i: discord.Interaction):
+            # Delete the poll message and cleanup storage
             channel = self.cog.bot.get_channel(self.poll_data['channel_id'])
             msg = await channel.fetch_message(self.message_id)
             await msg.delete()
             self.cog.polls.pop(self.message_id, None)
-            await self.cog.bot.pg_pool.execute("DELETE FROM polls WHERE id = $1", self.poll_data["id"])
-            # send a fresh ephemeral reply so the original confirm prompt no longer errors
-            await i.response.send_message("✅ Poll deleted.", ephemeral=True)
+            await self.cog.bot.pg_pool.execute(
+                "DELETE FROM polls WHERE id = $1", self.poll_data["id"]
+            )
+            # Edit the original ephemeral prompt to show deletion confirmation
+            await i.response.edit_message(content="✅ Poll deleted.", view=None)
         btn_yes.callback = yes_cb
         confirm_view.add_item(btn_yes)
 
+        # "Cancel" button
         btn_no = discord.ui.Button(label="Cancel", style=discord.ButtonStyle.secondary)
-        async def no_cb(i):
-            # replace prompt with fresh cancellation notice
-            await i.response.send_message("❌ Delete action cancelled.", ephemeral=True)
+        async def no_cb(i: discord.Interaction):
+            # Replace prompt with cancellation notice
+            await i.response.edit_message(content="❌ Delete action cancelled.", view=None)
         btn_no.callback = no_cb
         confirm_view.add_item(btn_no)
 
-        # show delete‑confirmation prompt
+        # Send the delete‑confirmation prompt ephemerally
         await interaction.response.send_message(
             content="Are you sure you want to **delete** the poll?",
             view=confirm_view,
