@@ -875,17 +875,6 @@ class PollCog(commands.Cog):
             )
             return
 
-        # --- SEND THE REMINDER MESSAGE FIRST ---
-        try:
-            await channel.send(
-                f"{vote_pending_role.mention} Poll “{poll['question']}” ends in 1 hour—please cast your vote!",
-                allowed_mentions=discord.AllowedMentions(roles=True)
-            )
-            log.info(f"Sent 1-hour reminder for poll {message_id}")
-        except Exception as e:
-            log.exception("Failed to send reminder message for poll %s: %s", message_id, e)
-            # even if this fails, we still want to try assigning roles below
-
         # --- ASSIGN @Vote_Pending to non-voters ---
         # normalize your vote list to ints
         user_votes = set(int(uid) for uid in poll.get('user_votes', []))
@@ -902,6 +891,16 @@ class PollCog(commands.Cog):
                 log.error("Missing permission to assign Vote Pending to %s", member)
             except Exception as e:
                 log.exception("Error assigning Vote Pending to %s: %s", member, e)
+
+        # --- NOW SEND THE PINGING REMINDER MESSAGE ---
+        try:
+            await channel.send(
+                f"{vote_pending_role.mention} Poll “{poll['question']}” ends in 1 hour—please cast your vote!",
+                allowed_mentions=discord.AllowedMentions(roles=True)
+            )
+            log.info(f"Sent 1-hour reminder for poll {message_id}")
+        except Exception as e:
+            log.exception("Failed to send reminder message for poll %s: %s", message_id, e)
 
 
     async def schedule_countdown_update(self, message_id):
