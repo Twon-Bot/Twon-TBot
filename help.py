@@ -325,6 +325,14 @@ class HelpCog(commands.Cog):
             )
             await send(embed=embed, ephemeral=is_inter)
 
+        elif topic in ['removerole', 'rr', 'remr', 'remove', 'rrole']:
+            embed = discord.Embed(
+                title="!!removerole  //  !!rr  //  !!remove",
+                description="Used to remove the **'Awaiting Vote Response'** command from all users **in the entire server.**\nNeeds to be input as: !!remove <role_ID_number>",
+                color=0xFFC107
+            )
+            await send(embed=embed, ephemeral=is_inter)
+
         else:
             embed = discord.Embed(
                 title="**Unknown Help Topic**",
