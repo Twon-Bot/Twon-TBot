@@ -358,8 +358,12 @@ class SettingsView(discord.ui.View):
                     voters = [f"<@{uid}>" for uid, v in self.poll_data['user_votes'].items()
                               if (isinstance(v, list) and selected in v) or v == selected]
                     content = f"Voters for {selected}:\n" + ("\n".join(voters) if voters else "No votes yet.")
-                # Send ephemeral message with the result
-                await select_inter.response.send_message(content=content, ephemeral=True)
+                # Edit the original ephemeral to replace its content,
+                # re-using the same view (so the dropdown stays at the top)
+                await select_inter.response.edit_message(
+                    content=content,
+                    view=self.view
+                )
 
         # Create a view for the select menu and add our VoterSelect
         menu_view = discord.ui.View(timeout=None)
