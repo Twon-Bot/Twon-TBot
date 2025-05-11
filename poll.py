@@ -830,50 +830,60 @@ class PollCog(commands.Cog):
         if not poll or not poll.get('end_time'):
             return
 
+        # make sure votes is a set of ints
+        user_votes = set(int(uid) for uid in poll.get('user_votes', []))
+
         now = datetime.utcnow().replace(tzinfo=pytz.utc)
         remind_at = poll['end_time'] - timedelta(hours=1)
         wait = (remind_at - now).total_seconds()
         if wait > 0:
             await asyncio.sleep(wait)
 
-        # do nothing if poll already closed
+        # bail if the poll closed in the meantime
         if poll.get('closed'):
             return
 
-        # fetch channel & message
+        # get channel & guild objects
         channel = self.bot.get_channel(poll['channel_id'])
         if not channel:
             return
-        msg = await channel.fetch_message(message_id)
-
-        # fetch roles
         guild = channel.guild
+
+        # fetch roles once
         player_role = guild.get_role(PLAYER_ROLE_ID)
-        vote_pending_role = guild.get_role(VOTE_PENDING_ROLE_ID)
-        if not player_role or not vote_pending_role:
-            # roles not found → bail
+        vote_pending = guild.get_role(VOTE_PENDING_ROLE_ID)
+        if not player_role or not vote_pending:
+            self.bot.logger.warning("Player or Vote Pending role not found on guild %s", guild)
             return
 
-        # assign @Vote_Pending to every @Player who hasn't voted
-        # assign @Vote_Pending to every @Player who hasn't voted
-        player_role       = guild.get_role(PLAYER_ROLE_ID)
-        vote_pending_role = guild.get_role(VOTE_PENDING_ROLE_ID)
+        # if the bot’s top role is below Vote Pending, role assignment will fail
+        bot_member = guild.get_member(self.bot.user.id)
+        if vote_pending.position >= bot_member.top_role.position:
+            self.bot.logger.error("Cannot assign Vote Pending: role hierarchy issue (bot’s top role is too low)")
+            return
 
-        if player_role and vote_pending_role:
-            for member in player_role.members:
-                if member.id not in poll['user_votes']:
-                    try:
-                        await member.add_roles(vote_pending_role, reason="Poll reminder: please vote")
-                    except Exception:
-                        # log if you like, but swallow errors so one failure
-                        # doesn’t break the whole loop
-                        pass
-
-        # send a reminder ping
+        # send the 1-hour reminder message
         await channel.send(
-            f"{vote_pending_role.mention} Poll “{poll['question']}” ends in 1 hour—please cast your vote!",
+            f"{vote_pending.mention} Poll “{poll['question']}” ends in 1 hour—please cast your vote!",
             allowed_mentions=discord.AllowedMentions(roles=True)
         )
+
+        # now assign Vote Pending to every @Player who hasn’t voted
+        for member in player_role.members:
+            if member.bot:
+                continue  # skip bots (including your own)
+            if member.id in user_votes:
+                continue  # already voted
+            try:
+                await member.add_roles(
+                    vote_pending,
+                    reason="Poll reminder: please vote"
+                )
+                self.bot.logger.info("Assigned Vote Pending to %s (%d)", member, member.id)
+            except discord.Forbidden:
+                self.bot.logger.error("Missing permission to assign Vote Pending to %s", member)
+            except Exception as e:
+                self.bot.logger.exception("Failed to assign Vote Pending to %s: %s", member, e)
 
     async def schedule_countdown_update(self, message_id):
         # loop until closed or past end, re-fetching poll each iteration
