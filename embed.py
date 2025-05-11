@@ -34,7 +34,7 @@ class EmbedCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.command(name="embed")
+    @commands.command(name="embed", aliases=["emb", "em"])
     @commands.has_any_role('The BotFather', 'Moderator', 'Manager', 'Server Owner')
     async def embed(self, ctx, *, content: str):
         """Create an embed with the given content and delete the invocation."""

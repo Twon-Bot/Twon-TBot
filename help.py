@@ -317,6 +317,14 @@ class HelpCog(commands.Cog):
             )
             await send(embed=embed, ephemeral=is_inter)
 
+        elif topic in ['embed', 'emb', 'em']:
+            embed = discord.Embed(
+                title="/embed  //  !!embed  //  !!emb  //  !!em",
+                description="Outputs all following text within an embed.\n`!!embed <text>` → Outputs <text> in a purple embed.\n`/embed` → Outputs embed with 'Contents' in your chosen 'Colour'.",
+                color=0xFFC107
+            )
+            await send(embed=embed, ephemeral=is_inter)
+
         else:
             embed = discord.Embed(
                 title="**Unknown Help Topic**",
