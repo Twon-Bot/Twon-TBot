@@ -828,62 +828,82 @@ class PollCog(commands.Cog):
     async def schedule_poll_reminder(self, message_id):
         poll = self.polls.get(message_id)
         if not poll or not poll.get('end_time'):
+            self.bot.logger.warning(f"No end_time for poll {message_id}, skipping reminder")
             return
 
-        # make sure votes is a set of ints
-        user_votes = set(int(uid) for uid in poll.get('user_votes', []))
+        # Ensure end_time is timezone-aware UTC
+        end_time = poll['end_time']
+        if end_time.tzinfo is None:
+            end_time = end_time.replace(tzinfo=pytz.utc)
 
         now = datetime.utcnow().replace(tzinfo=pytz.utc)
-        remind_at = poll['end_time'] - timedelta(hours=1)
+        remind_at = end_time - timedelta(hours=1)
+
         wait = (remind_at - now).total_seconds()
+        self.bot.logger.info(f"Poll {message_id}: now={now.isoformat()}, remind_at={remind_at.isoformat()}, wait={wait}")
+
+        # if wait is positive, sleep; otherwise fall through immediately
         if wait > 0:
             await asyncio.sleep(wait)
+        else:
+            self.bot.logger.warning(f"Poll {message_id}: remind time already passed ({wait}s)—sending immediately")
 
-        # bail if the poll closed in the meantime
+        # bail out if poll closed
         if poll.get('closed'):
+            self.bot.logger.info(f"Poll {message_id} already closed, skipping reminder")
             return
 
-        # get channel & guild objects
+        # grab channel
         channel = self.bot.get_channel(poll['channel_id'])
         if not channel:
+            self.bot.logger.error(f"Couldn’t find channel {poll['channel_id']} for poll {message_id}")
             return
         guild = channel.guild
 
         # fetch roles once
-        player_role = guild.get_role(PLAYER_ROLE_ID)
-        vote_pending = guild.get_role(VOTE_PENDING_ROLE_ID)
-        if not player_role or not vote_pending:
-            self.bot.logger.warning("Player or Vote Pending role not found on guild %s", guild)
+        player_role       = guild.get_role(PLAYER_ROLE_ID)
+        vote_pending_role = guild.get_role(VOTE_PENDING_ROLE_ID)
+        if not player_role or not vote_pending_role:
+            self.bot.logger.error("Missing @Player or @Vote_Pending role on guild %s", guild)
             return
 
-        # if the bot’s top role is below Vote Pending, role assignment will fail
+        # check hierarchy
         bot_member = guild.get_member(self.bot.user.id)
-        if vote_pending.position >= bot_member.top_role.position:
-            self.bot.logger.error("Cannot assign Vote Pending: role hierarchy issue (bot’s top role is too low)")
+        if vote_pending_role.position >= bot_member.top_role.position:
+            self.bot.logger.error(
+                "Cannot assign Vote Pending: role %r is above bot’s top role %r",
+                vote_pending_role, bot_member.top_role
+            )
             return
 
-        # send the 1-hour reminder message
-        await channel.send(
-            f"{vote_pending.mention} Poll “{poll['question']}” ends in 1 hour—please cast your vote!",
-            allowed_mentions=discord.AllowedMentions(roles=True)
-        )
+        # --- SEND THE REMINDER MESSAGE FIRST ---
+        try:
+            await channel.send(
+                f"{vote_pending_role.mention} Poll “{poll['question']}” ends in 1 hour—please cast your vote!",
+                allowed_mentions=discord.AllowedMentions(roles=True)
+            )
+            self.bot.logger.info(f"Sent 1-hour reminder for poll {message_id}")
+        except Exception as e:
+            self.bot.logger.exception("Failed to send reminder message for poll %s: %s", message_id, e)
+            # even if this fails, we still want to try assigning roles below
 
-        # now assign Vote Pending to every @Player who hasn’t voted
+        # --- ASSIGN @Vote_Pending to non-voters ---
+        # normalize your vote list to ints
+        user_votes = set(int(uid) for uid in poll.get('user_votes', []))
         for member in player_role.members:
             if member.bot:
-                continue  # skip bots (including your own)
+                continue
             if member.id in user_votes:
-                continue  # already voted
+                continue
+
             try:
-                await member.add_roles(
-                    vote_pending,
-                    reason="Poll reminder: please vote"
-                )
-                self.bot.logger.info("Assigned Vote Pending to %s (%d)", member, member.id)
+                await member.add_roles(vote_pending_role, reason="Poll reminder: please vote")
+                self.bot.logger.info("→ Assigned Vote Pending to %s", member)
             except discord.Forbidden:
                 self.bot.logger.error("Missing permission to assign Vote Pending to %s", member)
             except Exception as e:
-                self.bot.logger.exception("Failed to assign Vote Pending to %s: %s", member, e)
+                self.bot.logger.exception("Error assigning Vote Pending to %s: %s", member, e)
+
 
     async def schedule_countdown_update(self, message_id):
         # loop until closed or past end, re-fetching poll each iteration
