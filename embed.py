@@ -3,7 +3,7 @@ from discord.ext import commands
 from discord import app_commands
 
 # Default embed color (purple)
-EMBED_COLOR = 0xFF69B4
+EMBED_COLOR = 0x00FF00
 
 # Named colours mapping
 NAMED_COLOURS = {
