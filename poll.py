@@ -845,11 +845,11 @@ class PollCog(commands.Cog):
         if wait > 0:
             await asyncio.sleep(wait)
         else:
-            self.bot.logger.warning(f"Poll {message_id}: remind time already passed ({wait}s)—sending immediately")
+            log.warning(f"Poll {message_id}: remind time already passed ({wait}s)—sending immediately")
 
         # bail out if poll closed
         if poll.get('closed'):
-            self.bot.logger.info(f"Poll {message_id} already closed, skipping reminder")
+            log.info(f"Poll {message_id} already closed, skipping reminder")
             return
 
         # grab channel
@@ -863,13 +863,13 @@ class PollCog(commands.Cog):
         player_role       = guild.get_role(PLAYER_ROLE_ID)
         vote_pending_role = guild.get_role(VOTE_PENDING_ROLE_ID)
         if not player_role or not vote_pending_role:
-            self.bot.logger.error("Missing @Player or @Vote_Pending role on guild %s", guild)
+            log.error("Missing @Player or @Vote_Pending role on guild %s", guild)
             return
 
         # check hierarchy
         bot_member = guild.get_member(self.bot.user.id)
         if vote_pending_role.position >= bot_member.top_role.position:
-            self.bot.logger.error(
+            log.error(
                 "Cannot assign Vote Pending: role %r is above bot’s top role %r",
                 vote_pending_role, bot_member.top_role
             )
@@ -881,9 +881,9 @@ class PollCog(commands.Cog):
                 f"{vote_pending_role.mention} Poll “{poll['question']}” ends in 1 hour—please cast your vote!",
                 allowed_mentions=discord.AllowedMentions(roles=True)
             )
-            self.bot.logger.info(f"Sent 1-hour reminder for poll {message_id}")
+            log.info(f"Sent 1-hour reminder for poll {message_id}")
         except Exception as e:
-            self.bot.logger.exception("Failed to send reminder message for poll %s: %s", message_id, e)
+            log.exception("Failed to send reminder message for poll %s: %s", message_id, e)
             # even if this fails, we still want to try assigning roles below
 
         # --- ASSIGN @Vote_Pending to non-voters ---
@@ -897,11 +897,11 @@ class PollCog(commands.Cog):
 
             try:
                 await member.add_roles(vote_pending_role, reason="Poll reminder: please vote")
-                self.bot.logger.info("→ Assigned Vote Pending to %s", member)
+                log.info("→ Assigned Vote Pending to %s", member)
             except discord.Forbidden:
-                self.bot.logger.error("Missing permission to assign Vote Pending to %s", member)
+                log.error("Missing permission to assign Vote Pending to %s", member)
             except Exception as e:
-                self.bot.logger.exception("Error assigning Vote Pending to %s: %s", member, e)
+                log.exception("Error assigning Vote Pending to %s: %s", member, e)
 
 
     async def schedule_countdown_update(self, message_id):
