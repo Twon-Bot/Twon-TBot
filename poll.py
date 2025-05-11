@@ -14,8 +14,8 @@ import logging
 
 # ─── Role IDs for reminders ─────────────────────────────
 load_dotenv()
-PLAYER_ROLE_ID       = int(os.getenv("PLAYER_ROLE_ID"      ,  "1334747903427870742"))
-VOTE_PENDING_ROLE_ID = int(os.getenv("VOTE_PENDING_ROLE_ID","1366303580591755295"))
+PLAYER_ROLE_ID       = int(os.getenv("PLAYER_ROLE_ID"))
+VOTE_PENDING_ROLE_ID = int(os.getenv("VOTE_PENDING_ROLE_ID"))
 
 # Use numeric keycap emojis for consistent display across platforms
 OPTION_EMOJIS = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"]
