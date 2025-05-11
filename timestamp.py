@@ -16,7 +16,7 @@ class TimestampCog(commands.Cog):
         return row["timezone"] if row else None
 
     @commands.command(name='timestamp', aliases=['ts'])
-    @commands.has_any_role('The BotFather', 'Spreadsheet-Master', 'Server Owner', 'Manager', 'Moderator')
+    @commands.has_any_role('The BotFather', 'Spreadsheet-Master', 'Server Owner', 'Manager', 'Moderator', 'Police', 'Honorary Member')
     async def timestamp(self, ctx, *, time_str: str = None):
         """
         Converts a given time (in MM/DD HH:MM) based on the user's timezone
@@ -57,7 +57,6 @@ class TimestampCog(commands.Cog):
 
         # Send results.
         await ctx.send(f"Here is your Discord timestamp display:\n**{full_timestamp}**")
-        await ctx.send("Copy this code for your usage:")
         await ctx.send(f"{timestamp_int}")
         await ctx.send("For formatting options, please see: **!!help timestamp**")
 
