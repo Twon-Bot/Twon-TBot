@@ -113,6 +113,7 @@ async def load_extensions():
         await bot.load_extension('happytree')
         await bot.load_extension('livepackowner')
         await bot.load_extension('honorary')
+        await bot.load_extension('embed')
         print("Extensions loaded successfully.")
         print("Registered commands:", [cmd.name for cmd in bot.commands])
     except Exception as e:
