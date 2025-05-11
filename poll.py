@@ -22,7 +22,6 @@ OPTION_EMOJIS = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7�
 # Shorten bar length to avoid wrapping on mobile
 BAR_LENGTH = 8
 
-
 def get_user_timezone(user_id):
     """Helper: Look up user timezone in bot_data.db; default to UTC if not set."""
     import sqlite3
@@ -828,7 +827,7 @@ class PollCog(commands.Cog):
     async def schedule_poll_reminder(self, message_id):
         poll = self.polls.get(message_id)
         if not poll or not poll.get('end_time'):
-            self.bot.logger.warning(f"No end_time for poll {message_id}, skipping reminder")
+            log.warning(f"No end_time for poll {message_id}, skipping reminder")
             return
 
         # Ensure end_time is timezone-aware UTC
@@ -840,7 +839,7 @@ class PollCog(commands.Cog):
         remind_at = end_time - timedelta(hours=1)
 
         wait = (remind_at - now).total_seconds()
-        self.bot.logger.info(f"Poll {message_id}: now={now.isoformat()}, remind_at={remind_at.isoformat()}, wait={wait}")
+        log.info(f"Poll {message_id}: now={now.isoformat()}, remind_at={remind_at.isoformat()}, wait={wait}")
 
         # if wait is positive, sleep; otherwise fall through immediately
         if wait > 0:
@@ -856,7 +855,7 @@ class PollCog(commands.Cog):
         # grab channel
         channel = self.bot.get_channel(poll['channel_id'])
         if not channel:
-            self.bot.logger.error(f"Couldn’t find channel {poll['channel_id']} for poll {message_id}")
+            log.error(f"Couldn’t find channel {poll['channel_id']} for poll {message_id}")
             return
         guild = channel.guild
 
