@@ -35,7 +35,7 @@ class EmbedCog(commands.Cog):
         self.bot = bot
 
     @commands.command(name="embed", aliases=["emb", "em"])
-    @commands.has_any_role('The BotFather', 'Moderator', 'Manager', 'Server Owner')
+    @commands.has_any_role('The BotFather', 'Moderator', 'Manager', 'Server Owner', 'Police')
     async def embed(self, ctx, *, content: str):
         """Create an embed with the given content and delete the invocation."""
         # delete the user's original message
@@ -45,7 +45,7 @@ class EmbedCog(commands.Cog):
         await ctx.send(embed=embed)
 
     @app_commands.command(name="embed", description="Create an embed with optional color")
-    @commands.has_any_role('The BotFather', 'Moderator', 'Manager', 'Server Owner')
+    @commands.has_any_role('The BotFather', 'Moderator', 'Manager', 'Server Owner', 'Police')
     @app_commands.describe(
         colour="Hex code (#RRGGBB) or named colour (e.g. RED). Leave blank for default purple",
         content="Contents of the embed"
