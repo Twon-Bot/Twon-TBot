@@ -423,7 +423,10 @@ class SettingsView(discord.ui.View):
     async def delete(self, interaction: discord.Interaction, button):
         # Ensure only the poll author can delete
         if interaction.user.id != self.poll_data['author_id']:
-            return await interaction.followup.send("Only creator can delete.", ephemeral=True)
+            return await interaction.response.send_message(
+                "❌ Only the poll creator can delete this poll.",
+                ephemeral=True
+            )
 #
         # Create a confirmation view with two buttons
         confirm_view = discord.ui.View(timeout=30)
@@ -591,9 +594,9 @@ class PollCog(commands.Cog):
             desc = header + format_results()
             # ─── tell them single vs multiple ────────────────────────────
             if data['voting_type'] == 'single':
-                desc += "\n*You may select **only one option** in this poll.*\n"
+                desc += "\n*You may select **only one option**.*\n"
             else:
-                desc += "\n*You may select **multiple options** in this poll.*\n"
+                desc += "\n*You may select **multiple options**.*\n"
             # ── One‑hour‑reminder status line ────────────────────────────────────
             status = "**On**" if data.get('one_hour_reminder') else "Off"
             desc += f"*One Hour Reminder: {status}*\n"
