@@ -4,7 +4,7 @@ from discord import app_commands
 from datetime import datetime
 import pytz
 
-# Available Discord timestamp formats with descriptions
+# Available Discord timestamp formats
 TIMESTAMP_FORMATS = {
     "F": "Day, Month, Year at Time",
     "f": "Month, Year at Time",
@@ -15,16 +15,10 @@ TIMESTAMP_FORMATS = {
     "R": "Relative time"
 }
 
-# Timezone offset choices UTC−7 through UTC+7
+# Timezone offset choices UTC-7 through UTC+7
 TZ_CHOICES = [
     app_commands.Choice(name=f"UTC{offset:+}", value=offset)
     for offset in range(-7, 8)
-]
-
-# Style choices with both letter and description
-STYLE_CHOICES = [
-    app_commands.Choice(name=f"{k} — {v}", value=k)
-    for k, v in TIMESTAMP_FORMATS.items()
 ]
 
 class TimestampCog(commands.Cog):
@@ -32,11 +26,16 @@ class TimestampCog(commands.Cog):
         self.bot = bot
 
     async def get_user_timezone(self, user_id: int) -> str:
+        """Fetch a user’s saved timezone or default to UTC."""
         row = await self.bot.pg_pool.fetchrow(
             "SELECT timezone FROM timezones WHERE user_id = $1",
             user_id
         )
         return row["timezone"] if row else "UTC"
+
+    #
+    #  PREFIX COMMANDS (no slash)
+    #
 
     @commands.command(name='timestamp', aliases=['ts'])
     @commands.has_any_role(
@@ -48,6 +47,7 @@ class TimestampCog(commands.Cog):
         !!timestamp MM/DD HH:MM
         Converts local time into a Discord timestamp <t:TIMESTAMP:F>.
         """
+        # delete user input
         try:
             await ctx.message.delete()
         except discord.Forbidden:
@@ -56,16 +56,17 @@ class TimestampCog(commands.Cog):
         if not time_str:
             return await ctx.send(
                 "⚠️ **Error:** You must provide a date/time.\n"
-                "**Usage:** `!!timestamp MM/DD HH:MM`",
-                delete_after=10
+                "**Usage:** `!!timestamp MM/DD HH:MM`"
             )
 
+        # determine user's timezone
         tz_name = await self.get_user_timezone(ctx.author.id)
         try:
             tz = pytz.timezone(tz_name)
         except pytz.UnknownTimeZoneError:
             tz = pytz.utc
 
+        # parse flexible date/time
         parsed = None
         for fmt in ("%m/%d %H:%M", "%-m/%-d %H:%M", "%Y-%m-%d %H:%M"):
             try:
@@ -75,18 +76,22 @@ class TimestampCog(commands.Cog):
                 continue
         if not parsed:
             return await ctx.send(
-                "⚠️ **Invalid format!** Use `MM/DD HH:MM` or `YYYY-MM-DD HH:MM`.",
-                delete_after=10
+                "⚠️ **Invalid format!** Use `MM/DD HH:MM` or `YYYY-MM-DD HH:MM`."
             )
 
+        # assume current year if missing
         if parsed.year == 1900:
             parsed = parsed.replace(year=datetime.utcnow().year)
 
+        # localize & build
         local_dt = tz.localize(parsed)
         ts_int = int(local_dt.timestamp())
         ts_code = f"<t:{ts_int}:F>"
 
-        await ctx.send(f"{ts_code}\n{ts_int}\nFor timestamp formatting options, see: `!!formats`")
+        await ctx.send(
+            f"{ts_code}\n{ts_int}\n"
+            "For timestamp formatting options, see: `!!formats`"
+        )
 
     @commands.command(
         name='timestamp_formats',
@@ -109,11 +114,16 @@ class TimestampCog(commands.Cog):
         embed = discord.Embed(
             title="**Timestamp Formats:**",
             description="\n".join(
-                f"- `<t:###:{k}>` → {v}" for k, v in TIMESTAMP_FORMATS.items()
+                f"- `<t:###:{k}>` → {v}"
+                for k, v in TIMESTAMP_FORMATS.items()
             ),
             color=0xFFC107
         )
         await ctx.send(embed=embed)
+
+    #
+    #  SLASH COMMAND
+    #
 
     @app_commands.command(
         name="timestamp",
@@ -121,13 +131,13 @@ class TimestampCog(commands.Cog):
     )
     @app_commands.describe(
         datetime_str="Date & time (e.g. 03/15 18:00 or 2025-03-15 18:00)",
-        parsing_timezone="Your timezone offset (UTC−7 to UTC+7)",
+        parsing_timezone="Your timezone offset (UTC–7 to UTC+7)",
         public="If true, message is public; otherwise ephemeral",
-        style="Timestamp format"
+        style="Which Discord timestamp style to use"
     )
     @app_commands.choices(
         parsing_timezone=TZ_CHOICES,
-        style=STYLE_CHOICES
+        style=[app_commands.Choice(name=k, value=k) for k in TIMESTAMP_FORMATS.keys()]
     )
     @app_commands.checks.has_any_role(
         'The BotFather', 'Spreadsheet-Master', 'Server Owner',
@@ -139,17 +149,18 @@ class TimestampCog(commands.Cog):
         datetime_str: str,
         parsing_timezone: app_commands.Choice[int],
         public: bool = False,
-        style: app_commands.Choice[str] = app_commands.Choice(name="F", value="F")
+        style: str = "F"
     ):
         """
         /timestamp datetime_str parsing_timezone public style
         """
+        # defer so we can follow up
         await interaction.response.defer(ephemeral=not public)
 
-        # Build timezone
+        # build tz from offset hours
         tz = pytz.FixedOffset(parsing_timezone.value * 60)
 
-        # Parse datetime
+        # parse input
         parsed = None
         for fmt in ("%m/%d %H:%M", "%-m/%-d %H:%M", "%Y-%m-%d %H:%M"):
             try:
@@ -167,13 +178,10 @@ class TimestampCog(commands.Cog):
 
         local_dt = tz.localize(parsed)
         ts_int = int(local_dt.timestamp())
-        ts_code = f"<t:{ts_int}:{style.value}>"
+        ts_code = f"<t:{ts_int}:{style}>"
 
-        # Public: only full timestamp; Private: timestamp + raw code
-        if public:
-            await interaction.followup.send(ts_code, ephemeral=False)
-        else:
-            await interaction.followup.send(f"{ts_code}\n{ts_int}", ephemeral=True)
+        await interaction.followup.send(ts_code, ephemeral=not public)
+
 
 async def setup(bot):
     await bot.add_cog(TimestampCog(bot))
