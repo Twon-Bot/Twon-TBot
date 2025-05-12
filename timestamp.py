@@ -24,12 +24,16 @@ class TimestampCog(commands.Cog):
 
         Usage: !!timestamp MM/DD HH:MM
         """
+        # delete invocation
+        try: await ctx.message.delete()
+        except discord.Forbidden: pass
+
         if time_str is None:
-            await ctx.send(
+            return await ctx.respond(
                 "⚠️ **Error:** An argument is required.\n"
-                "**Usage:** `!!timestamp MM/DD HH:MM` (e.g., `!!timestamp 03/15 18:00`)"
+                "**Usage:** `!!timestamp MM/DD HH:MM` (e.g., `!!timestamp 03/15 18:00`)",
+                ephemeral=True
             )
-            return
 
         # Get the user's timezone; default to UTC if not set.
         user_tz_str = await self.get_user_timezone(ctx.author.id) or 'UTC'
@@ -48,27 +52,38 @@ class TimestampCog(commands.Cog):
             local_time = tz.localize(input_time)
             utc_time = local_time.astimezone(pytz.utc)
         except ValueError:
-            await ctx.send("⚠️ Invalid format! Please use **MM/DD HH:MM** (e.g., `03/15 18:00`).")
-            return
+            return await ctx.respond(
+                "⚠️ **Invalid format!** Please use **MM/DD HH:MM** (e.g., `03/15 18:00`).",
+                ephemeral=True
+            )
 
         # Generate the Discord timestamp code and the raw timestamp.
         timestamp_int = int(utc_time.timestamp())
         full_timestamp = f"<t:{timestamp_int}:F>"
 
-        # Send results.
-        await ctx.send(f"Here is your Discord timestamp display:\n**{full_timestamp}**")
-        await ctx.send(f"{timestamp_int}")
-        await ctx.send("For timestamp formatting options, please see: **!!formats**")
+        # already deleted invocation above
+        # Send results ephemerally in two separate messages
+        await ctx.respond(
+            f"Here is your Discord timestamp display:\n**{full_timestamp}**\n\n"
+            "For timestamp formatting options, please see: **!!formats**",
+            ephemeral=True
+        )
+        await ctx.followup.send(f"{timestamp_int}", ephemeral=True)
 
     @timestamp.error
     async def timestamp_error(self, ctx, error):
+        # delete invocation
+        try: await ctx.message.delete()
+        except discord.Forbidden: pass
+
         if isinstance(error, commands.MissingRequiredArgument):
-            await ctx.send(
+            await ctx.respond(
                 "⚠️ **Error:** An argument is required.\n"
-                "**Usage:** `!!timestamp MM/DD HH:MM` (e.g., `!!timestamp 03/15 18:00`)"
+                "**Usage:** `!!timestamp MM/DD HH:MM` (e.g., `!!timestamp 03/15 18:00`)",
+                ephemeral=True
             )
         else:
-            await ctx.send("An unexpected error occurred.")
+            await ctx.respond("❌ An unexpected error occurred.", ephemeral=True)
 
     @commands.command(
         name='timestamp_formats',
@@ -82,13 +97,11 @@ class TimestampCog(commands.Cog):
         """
         Shows Discord timestamp formatting options.
         """
-        # Delete the invocation message
-        try:
-            await ctx.message.delete()
-        except discord.Forbidden:
-            pass
+        # delete invocation
+        try: await ctx.message.delete()
+        except discord.Forbidden: pass
 
-        # Build and send the formats embed as a DM (ephemeral)
+        # Build and send the formats embed ephemerally
         embed = discord.Embed(
             title="**Timestamp Formats:**",
             description=(
@@ -102,7 +115,7 @@ class TimestampCog(commands.Cog):
             ),
             color=0xFFC107
         )
-        await ctx.author.send(embed=embed)
+        await ctx.respond(embed=embed, ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(TimestampCog(bot))
