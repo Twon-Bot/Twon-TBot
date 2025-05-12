@@ -15,77 +15,86 @@ class TimestampCog(commands.Cog):
         )
         return row["timezone"] if row else None
 
-    @commands.command(name='timestamp', aliases=['ts'])
-    @commands.has_any_role('The BotFather', 'Spreadsheet-Master', 'Server Owner', 'Manager', 'Moderator', 'Police', 'Honorary Member')
-    async def timestamp(self, ctx, *, time_str: str = None):
+    @commands.hybrid_command(name='timestamp', aliases=['ts'])
+    @commands.has_any_role(
+        'The BotFather', 'Spreadsheet-Master', 'Server Owner',
+        'Manager', 'Moderator', 'Police', 'Honorary Member'
+    )
+    async def timestamp(self, ctx: commands.Context, *, time_str: str = None):
         """
         Converts a given time (in MM/DD HH:MM) based on the user's timezone
         into a Discord timestamp code (<t:TIMESTAMP:F>).
 
-        Usage: !!timestamp MM/DD HH:MM
+        Usage: /timestamp MM/DD HH:MM
         """
-        # delete invocation
-        try: await ctx.message.delete()
-        except discord.Forbidden: pass
+        # delete invocation message (prefix only)
+        if ctx.message:
+            try:
+                await ctx.message.delete()
+            except discord.Forbidden:
+                pass
 
-        if time_str is None:
+        # missing argument
+        if not time_str:
             return await ctx.respond(
-                "⚠️ **Error:** An argument is required.\n"
-                "**Usage:** `!!timestamp MM/DD HH:MM` (e.g., `!!timestamp 03/15 18:00`)",
+                "⚠️ **Error:** You must provide a date/time.\n"
+                "**Usage:** `/timestamp MM/DD HH:MM` (e.g., `/timestamp 03/15 18:00`)",
                 ephemeral=True
             )
 
-        # Get the user's timezone; default to UTC if not set.
+        # determine timezone
         user_tz_str = await self.get_user_timezone(ctx.author.id) or 'UTC'
         try:
             tz = pytz.timezone(user_tz_str)
         except pytz.UnknownTimeZoneError:
             tz = pytz.utc
 
+        # parse input
         try:
-            # Parse the provided time string and set the year to the current year.
             input_time = datetime.strptime(time_str, "%m/%d %H:%M")
-            current_year = datetime.utcnow().year
-            input_time = input_time.replace(year=current_year)
-
-            # Localize the input time and convert to UTC.
+            input_time = input_time.replace(year=datetime.utcnow().year)
             local_time = tz.localize(input_time)
             utc_time = local_time.astimezone(pytz.utc)
         except ValueError:
             return await ctx.respond(
-                "⚠️ **Invalid format!** Please use **MM/DD HH:MM** (e.g., `03/15 18:00`).",
+                "⚠️ **Invalid format!** Please use **MM/DD HH:MM** (e.g., `/timestamp 03/15 18:00`).",
                 ephemeral=True
             )
 
-        # Generate the Discord timestamp code and the raw timestamp.
+        # build timestamps
         timestamp_int = int(utc_time.timestamp())
         full_timestamp = f"<t:{timestamp_int}:F>"
 
-        # already deleted invocation above
-        # Send results ephemerally in two separate messages
+        # respond ephemerally
         await ctx.respond(
-            f"Here is your Discord timestamp display:\n**{full_timestamp}**\n\n"
-            "For timestamp formatting options, please see: **!!formats**",
+            f"Here is your Discord timestamp display:\n**{full_timestamp}**",
             ephemeral=True
         )
-        await ctx.followup.send(f"{timestamp_int}", ephemeral=True)
+        await ctx.followup.send(str(timestamp_int), ephemeral=True)
+        await ctx.followup.send(
+            "For timestamp formatting options, please see: `/timestamp formats`",
+            ephemeral=True
+        )
 
     @timestamp.error
-    async def timestamp_error(self, ctx, error):
-        # delete invocation
-        try: await ctx.message.delete()
-        except discord.Forbidden: pass
+    async def timestamp_error(self, ctx: commands.Context, error):
+        # delete invocation (prefix only)
+        if ctx.message:
+            try:
+                await ctx.message.delete()
+            except discord.Forbidden:
+                pass
 
         if isinstance(error, commands.MissingRequiredArgument):
             await ctx.respond(
-                "⚠️ **Error:** An argument is required.\n"
-                "**Usage:** `!!timestamp MM/DD HH:MM` (e.g., `!!timestamp 03/15 18:00`)",
+                "⚠️ **Error:** You must provide a date/time.\n"
+                "**Usage:** `/timestamp MM/DD HH:MM` (e.g., `/timestamp 03/15 18:00`)",
                 ephemeral=True
             )
         else:
             await ctx.respond("❌ An unexpected error occurred.", ephemeral=True)
 
-    @commands.command(
+    @commands.hybrid_command(
         name='timestamp_formats',
         aliases=['tsf', 'format', 'formats', 'tsformat', 'tsformats']
     )
@@ -93,15 +102,17 @@ class TimestampCog(commands.Cog):
         'The BotFather', 'Spreadsheet-Master', 'Server Owner',
         'Manager', 'Moderator', 'Police', 'Honorary Member'
     )
-    async def timestamp_formats(self, ctx):
+    async def timestamp_formats(self, ctx: commands.Context):
         """
         Shows Discord timestamp formatting options.
         """
-        # delete invocation
-        try: await ctx.message.delete()
-        except discord.Forbidden: pass
+        # delete invocation message (prefix only)
+        if ctx.message:
+            try:
+                await ctx.message.delete()
+            except discord.Forbidden:
+                pass
 
-        # Build and send the formats embed ephemerally
         embed = discord.Embed(
             title="**Timestamp Formats:**",
             description=(
@@ -119,4 +130,4 @@ class TimestampCog(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(TimestampCog(bot))
-    print ("Loaded TimestampCog!")
+    print("Loaded TimestampCog!")
