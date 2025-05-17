@@ -122,7 +122,7 @@ class TimestampCog(commands.Cog):
         await ctx.send(embed=embed)
 
     #
-    #  SLASH COMMAND
+    # SLASH COMMAND
     #
 
     @app_commands.command(
