@@ -8,7 +8,6 @@ import asyncio
 from discord.ext import commands
 from dotenv import load_dotenv
 from datetime import datetime
-import ssl
 
 
 # Load environment variables
@@ -151,20 +150,6 @@ async def on_command(ctx):
     channel_name = ctx.channel.name if ctx.channel else "Direct Message"
     print(f"{nickname} used command '{command_used}' in #{channel_name} at {time_used}")
 
-# (+) Add the retry helper right under your imports:
-async def get_pg_pool(url, max_retries=5):
-    """
-    Try to create an asyncpg pool with exponential back‑off.
-    """
-    ssl_ctx = ssl.create_default_context()  # Railway requires SSL
-    for i in range(max_retries):
-        try:
-            return await asyncpg.create_pool(url, ssl=ssl_ctx)
-        except (ConnectionError, OSError):
-            # back‑off: 1s, 2s, 4s, 8s…
-            await asyncio.sleep(2 ** i)
-    raise RuntimeError("Could not connect to Postgres after retries")
-
 async def main():
     db = Database()
     initialize_database(db)
@@ -174,7 +159,7 @@ async def main():
     if not DATABASE_URL:
         print(f"DATABASE_URL from env: {os.getenv('DATABASE_URL')}")
         raise ValueError("DATABASE_URL is not set in the environment!")
-    bot.pg_pool = await get_pg_pool(DATABASE_URL)
+    bot.pg_pool = await asyncpg.create_pool(DATABASE_URL)
     await bot.pg_pool.execute("""
         CREATE TABLE IF NOT EXISTS timezones (
             user_id BIGINT PRIMARY KEY,
