@@ -28,8 +28,7 @@ class DelayedAnnouncements(commands.Cog):
         self.existing_announcements = self.load_announcements()
         if not self.check_delays.is_running():
             self.check_delays.start()
-        # Debug statement output in powershell - temp removal
-        #print("DEBUG: DelayedAnnouncementsCog initialized.")
+        print("DEBUG: DelayedAnnouncementsCog initialized.")
         
     def cog_unload(self):
         # Cancel the check_delays task when the cog unloads
@@ -82,7 +81,7 @@ class DelayedAnnouncements(commands.Cog):
             print(f"Error reading announcements: {e}")
         return None
 
-    # ── Helper: Create a schedule embed matching your !!csch output ──
+    # ── Helper: Create a schedule embed matching your >csch output ──
     def create_schedule_embed(self, schedule):
         try:
             time1, time2, time3, time4 = map(datetime.fromisoformat, schedule)
@@ -113,8 +112,7 @@ class DelayedAnnouncements(commands.Cog):
             await ctx.send(f"Error: The announcement {announcement_name} does not exist.")
             return
 
-        schedule_cog = self.bot.get_cog("Schedule")
-        user_timezone = await schedule_cog.get_user_timezone(ctx.author.id) if schedule_cog else "UTC"
+        user_timezone = self.bot.get_cog("Schedule").get_user_timezone(ctx.author.id) or "UTC"
         tz = pytz.timezone(user_timezone)
 
         while True:
@@ -185,8 +183,8 @@ class DelayedAnnouncements(commands.Cog):
         await ctx.send(f"Scheduled announcement: **{announcement_name}** for <t:{timestamp}:F>.\n"
                        f"There are now **{pending_count} announcement(s)** pending.")
 
-    @commands.command(name="viewdelay", aliases=["vdelay", "vd"])
-    @commands.has_any_role('The BotFather', 'Moderator', 'Manager', 'Server Owner')
+    @commands.command(name="viewdelay", aliases=["vdelay"])
+    @commands.has_any_role('Moderator', 'Manager', 'Server Owner')
     async def view_delayed_announcements(self, ctx):
         """Show all pending delayed announcements in a clean format with a small orange diamond emoji."""
         async with self.lock:
@@ -204,20 +202,19 @@ class DelayedAnnouncements(commands.Cog):
             embed.description = "\n".join(lines)
             await ctx.send(embed=embed)
 
-    @commands.command(name="canceldelay", aliases=["cdelay", "cd"])
-    @commands.has_any_role('The BotFather', 'Moderator', 'Manager', 'Server Owner')
+    @commands.command(name="canceldelay", aliases=["cdelay"])
+    @commands.has_any_role('Moderator', 'Manager', 'Server Owner')
     async def cancel_delayed_announcement(self, ctx, *, time_str: str = None):
-        """Cancel a scheduled announcement. Format: !!canceldelay MM/DD HH:MM"""
+        """Cancel a scheduled announcement. Format: >canceldelay MM/DD HH:MM"""
         async with self.lock:
             if not self.delayed_announcements:
                 await ctx.send("There are no pending announcements to cancel.")
                 return
             if not time_str:
-                await ctx.send("Error: Please provide the scheduled time to cancel in the format:\n **!!canceldelay MM/DD HH:MM**")
+                await ctx.send("Error: Please provide the scheduled time to cancel in the format:\n **>canceldelay MM/DD HH:MM**")
                 return
             try:
-                schedule_cog = self.bot.get_cog("Schedule")
-                user_timezone = await schedule_cog.get_user_timezone(ctx.author.id) if schedule_cog else "UTC"
+                user_timezone = self.bot.get_cog("Schedule").get_user_timezone(ctx.author.id) or "UTC"
                 tz = pytz.timezone(user_timezone)
                 local_time = datetime.strptime(time_str, "%m/%d %H:%M")
                 local_time = local_time.replace(year=datetime.now(tz).year)

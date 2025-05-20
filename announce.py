@@ -18,20 +18,20 @@ class AnnouncementCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # ── Helper: Create a schedule embed matching !!csch ──
+    # ── Helper: Create a schedule embed matching >csch ──
     def create_schedule_embed(self, schedule):
         try:
             time1, time2, time3, time4 = map(datetime.fromisoformat, schedule)
             embed = discord.Embed(
-                title="✅ **The current schedule is as follows:**",
+                title="✅ **End Cycle Schedule:**",
                 color=0x39FF14  # Neon lime green
             )
             embed.description = (
                 "──────────────────────────────\n" +
-                f"🔹 Voting will begin at:\n**<t:{int(time1.timestamp())}:F>**\n\n"
-                f"🔹 Picking will begin at:\n**<t:{int(time2.timestamp())}:F>**\n\n"
-                f"🔹 Owner WP will begin at:\n**<t:{int(time3.timestamp())}:F>**\n\n"
-                f"🔹 Pack will die at:\n**<t:{int(time4.timestamp())}:F>**"
+                f"🔹 Voting Phase will begin at:\n**<t:{int(time1.timestamp())}:F>**\n\n"
+                f"🔹 Wonder Picking Phase will begin at:\n**<t:{int(time2.timestamp())}:F>**\n\n"
+                f"🔹 Owner's WP Phase will begin at:\n**<t:{int(time3.timestamp())}:F>**\n\n"
+                f"🔹 Pack will expire at:\n**<t:{int(time4.timestamp())}:F>**"
             )
             return embed
         except Exception as e:
@@ -52,12 +52,8 @@ class AnnouncementCog(commands.Cog):
     async def handle_wonder_pick_or_voting_end(self, ctx, lower_message, message, num_winners=None, test_mode=False):
         if lower_message.startswith("wonder pick"):
             await ctx.send(f"**Please input the {num_winners} winners and their pack contents**, in the following format:\n"
-                        f"***User 1, User 1's Pack, \nUser 2, User 2's Pack"
-                        f"{', \nUser 3, User 3\'s Pack' if num_winners > 2 else ''}"
-                        f"{', \nUser 4, User 4\'s Pack' if num_winners > 3 else ''}"
-                        f"{', \nUser 5, User 5\'s Pack' if num_winners > 4 else ''}"
-                        f"{', \nUser 6, User 6\'s Pack' if num_winners > 5 else ''}***\n"
-                        "*Note: Commas **must** separate each input!*")
+                           f"***User 1, User 1's Pack, \nUser 2, User 2's Pack{', \nUser 3, User 3\'s Pack' if num_winners > 2 else ''}{', \nUser 4, User 4\'s Pack' if num_winners > 3 else ''}***\n"
+                           "*Note: Commas **must** separate each input!*")
             expected_inputs = num_winners * 2
 
         elif lower_message == "voting end":
@@ -89,7 +85,7 @@ class AnnouncementCog(commands.Cog):
                 for i in range(num_winners):
                     user_pack_data[f"USER{i+1}"] = winners_info[2*i]
                     user_pack_data[f"PACK{i+1}"] = winners_info[2*i+1]
-                # Build a dynamic key such as "Wonder Pick 2", "Wonder Pick 3", or "Wonder Pick 4", etc.
+                # Build a dynamic key such as "Wonder Pick 2", "Wonder Pick 3", or "Wonder Pick 4"
                 template_key = f"Wonder Pick {num_winners}"
                 announcement_message = await self.get_announcement(template_key, test_mode=test_mode)
                 if announcement_message is None:
@@ -118,7 +114,7 @@ class AnnouncementCog(commands.Cog):
             await ctx.send("You took too long to respond. Please try again.")
             return
 
-        if ctx.invoked_with in ["ann", "announce", "a"]:
+        if ctx.invoked_with in ["ann", "announce"]:
             confirm_msg = await ctx.send("React with 👍 to confirm this announcement to @/everyone. React with ⏳ to schedule it.")
             await confirm_msg.add_reaction("👍")
             await confirm_msg.add_reaction("⏳")
@@ -152,7 +148,7 @@ class AnnouncementCog(commands.Cog):
                         schedule_cog = self.bot.get_cog("Schedule")
                         schedule = schedule_cog.get_schedule() if schedule_cog else None
                         if schedule is None:
-                            await ctx.send("No schedule has been set. Use `!!resetschedule` to set one.")
+                            await ctx.send("No schedule has been set. Use `>resetschedule` to set one.")
                             return
                         try:
                             time1, time2, time3, time4 = map(datetime.fromisoformat, schedule)
@@ -188,11 +184,11 @@ class AnnouncementCog(commands.Cog):
                             await target_channel.send(embed=embed)
             await ctx.send("Announcement confirmed.")
 
-    @commands.command(aliases=["ann", "a"])
-    @commands.has_any_role('The BotFather', 'Moderator', 'Manager', 'Server Owner')
+    @commands.command(aliases=["ann"])
+    @commands.has_any_role('Moderator', 'Manager', 'Server Owner')
     async def announce(self, ctx, *, message: str = None):
         if message is None:
-            await ctx.send('Error: Please provide an announcement. Try **"!!help announce"** for available options.')
+            await ctx.send('Error: Please provide an announcement. Try **">help announce"** for available options.')
             return
 
         delay_cog = self.bot.get_cog("DelayedAnnouncements")
@@ -202,7 +198,7 @@ class AnnouncementCog(commands.Cog):
 
         selected_announcement = await delay_cog.get_announcement(message)
         if selected_announcement is None:
-            await ctx.send(f'Announcement "{message}" not found. Try **"!!help announce"** for available options.')
+            await ctx.send(f'Announcement "{message}" not found. Try **">help announce"** for available options.')
             return
 
         lower_message = message.lower()
@@ -221,7 +217,7 @@ class AnnouncementCog(commands.Cog):
                 return
             check_time_input = time_msg.content.strip()
             schedule_cog = self.bot.get_cog("Schedule")
-            user_timezone = await schedule_cog.get_user_timezone(ctx.author.id) if schedule_cog else "UTC"
+            user_timezone = schedule_cog.get_user_timezone(ctx.author.id) if schedule_cog else "UTC"
             tz = pytz.timezone(user_timezone)
             try:
                 local_time = datetime.strptime(check_time_input, "%m/%d %H:%M")
@@ -303,7 +299,7 @@ class AnnouncementCog(commands.Cog):
                     schedule_cog = self.bot.get_cog("Schedule")
                     schedule = schedule_cog.get_schedule() if schedule_cog else None
                     if schedule is None:
-                        await ctx.send("No schedule has been set. Use `!!resetschedule` to set one.")
+                        await ctx.send("No schedule has been set. Use `>resetschedule` to set one.")
                         return
                     try:
                         time1, time2, time3, time4 = map(datetime.fromisoformat, schedule)
@@ -322,11 +318,11 @@ class AnnouncementCog(commands.Cog):
         except asyncio.TimeoutError:
             await ctx.send("Announcement confirmation timed out. Please try again.")
 
-    @commands.command(aliases=["testann", "ta"])
-    @commands.has_any_role('The BotFather', 'Moderator', 'Manager', 'Server Owner')
+    @commands.command(aliases=["testann"])
+    @commands.has_any_role('Moderator', 'Manager', 'Server Owner')
     async def testannounce(self, ctx, *, message: str = None):
         if message is None:
-            await ctx.send('Error: Please provide an announcement. Try **"!!help announce"** for available options.')
+            await ctx.send('Error: Please provide an announcement. Try **">help announce"** for available options.')
             return
         await self.handle_announcement(ctx, message, test_mode=True)
 
@@ -343,7 +339,7 @@ class AnnouncementCog(commands.Cog):
                 return
             schedule = schedule_cog.get_schedule()
             if schedule is None:
-                await ctx.send("No schedule has been set. Use `!!resetschedule` to set one.")
+                await ctx.send("No schedule has been set. Use `>resetschedule` to set one.")
                 return
             try:
                 time1, time2, time3, time4 = map(datetime.fromisoformat, schedule)
@@ -386,7 +382,7 @@ class AnnouncementCog(commands.Cog):
                 return
             check_time_input = time_msg.content.strip()
             schedule_cog = self.bot.get_cog("Schedule")
-            user_timezone = await schedule_cog.get_user_timezone(ctx.author.id) if schedule_cog else "UTC"
+            user_timezone = schedule_cog.get_user_timezone(ctx.author.id) if schedule_cog else "UTC"
             tz = pytz.timezone(user_timezone)
             try:
                 local_time = datetime.strptime(check_time_input, "%m/%d %H:%M")
@@ -414,7 +410,7 @@ class AnnouncementCog(commands.Cog):
             return
         selected_announcement = await self.get_announcement(message, test_mode=test_mode)
         if selected_announcement is None:
-            await ctx.send(f'Announcement "{message}" not found. Try **"!!help announce"** for available options.')
+            await ctx.send(f'Announcement "{message}" not found. Try **">help announce"** for available options.')
             return
         channel_id = TEST_ANNOUNCEMENT_CHANNEL_ID if test_mode else ANNOUNCEMENT_CHANNEL_ID
         announcement_channel = self.bot.get_channel(channel_id)

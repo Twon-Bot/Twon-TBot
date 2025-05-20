@@ -13,14 +13,14 @@ class EndCycleCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.command(name='endcycle', aliases=["endc", "ec"])
-    @commands.has_any_role('The BotFather', 'Spreadsheet-Master', 'Server Owner', 'Manager', 'Moderator')
+    @commands.command(name='endcycle', aliases=["endc"])
+    @commands.has_any_role('Spreadsheet-Master', 'Server Owner', 'Manager', 'Moderator')
     async def endcycle(self, ctx, *, message: str = None):
         # Check if the cycle number was provided.
         if message is None:
             await ctx.send(
                 'Error: Please input the ending cycle number with the command.\n'
-                '*(e.g. **!!endcycle 4** to start the 5th cycle).*'
+                '*(e.g. **>endcycle 4** to start the 5th cycle).*'
             )
             return
 
@@ -30,7 +30,7 @@ class EndCycleCog(commands.Cog):
         except ValueError:
             await ctx.send(
                 'Error: The cycle number must be an integer.\n'
-                '*(e.g. **!!endcycle 4** to start the 5th cycle).*'
+                '*(e.g. **>endcycle 4** to start the 5th cycle).*'
             )
             return
 

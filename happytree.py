@@ -6,7 +6,7 @@ class HappyTreeCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.command(aliases=["happy", "tree", "ht", "haptree", "haptre"])
+    @commands.command()
     async def happytree(self, ctx):
         """Sends a random happy tree drawing."""
         trees = [
